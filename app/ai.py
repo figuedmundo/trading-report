@@ -16,14 +16,18 @@ Respond in JSON with keys:
 original_language, translated_content, summary, key_metrics, market_outlook, risk_factors
 
 Content:
-{content[:8000]}
+{content}
 """
     try:
         response = client.chat.completions.create(
-            model="mixtral-8x7b-32768",
+            model="moonshotai/kimi-k2-instruct",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
-            temperature=0.3
+            temperature=0.6,
+            max_completion_tokens=4096,
+            top_p=1,
+            stream=False,
+            response_format={"type": "json_object"},
+            stop=None,
         )
         raw = response.choices[0].message.content
         return json.loads(raw)
