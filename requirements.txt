@@ -4,5 +4,8 @@ beautifulsoup4
 playwright
 notion-client
 python-dotenv
-telegram
 groq
+python-telegram-bot
+lxml
+Werkzeug
+# markdownify
