@@ -1,48 +1,40 @@
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 class Config:
-    # Flask Configuration
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    # Pro Trading Skills
+    PRO_USERNAME = os.getenv('PRO_USERNAME')
+    PRO_PASSWORD = os.getenv('PRO_PASSWORD')
+
+    # Flask settings
+    SECRET_KEY = os.getenv('SECRET_KEY')
+    DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
     
-    # Website Authentication
-    WEBSITE_USERNAME = os.environ.get('WEBSITE_USERNAME')
-    WEBSITE_PASSWORD = os.environ.get('WEBSITE_PASSWORD')
+    # Groq AI settings
+    GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+    GROQ_MODEL = "moonshotai/kimi-k2-instruct"
     
-    # API Keys
-    GROQ_API_KEY = os.environ.get('GROQ_API_KEY')
-    NOTION_TOKEN = os.environ.get('NOTION_TOKEN')
-    TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
+    # Notion settings
+    NOTION_API_KEY = os.getenv('NOTION_API_KEY')
+    NOTION_DATABASE_ID = os.getenv('NOTION_DATABASE_ID')
     
-    # Service IDs
-    NOTION_DATABASE_ID = os.environ.get('NOTION_DATABASE_ID')
-    TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+    # Telegram settings
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
     
-    # AI Settings
-    AI_MODEL = os.environ.get('AI_MODEL', 'moonshotai/kimi-k2-instruct')
-    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 8000))
+    # Email settings
+    SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+    SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+    EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS')
+    EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD')
+    RECIPIENT_EMAIL = os.getenv('RECIPIENT_EMAIL')
     
-    # Security
-    WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET')
+    # Scraping settings
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    REQUEST_TIMEOUT = 30
+    MAX_RETRIES = 3
     
-    @staticmethod
-    def validate_config():
-        """Validate required configuration"""
-        required_vars = [
-            'GROQ_API_KEY', 'NOTION_TOKEN', 'TELEGRAM_BOT_TOKEN',
-            'NOTION_DATABASE_ID', 'TELEGRAM_CHAT_ID',
-            'WEBSITE_USERNAME', 'WEBSITE_PASSWORD'
-        ]
-        
-        missing_vars = []
-        for var in required_vars:
-            if not os.environ.get(var):
-                missing_vars.append(var)
-        
-        if missing_vars:
-            raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-        
-        return True
+    # Logging
+    LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

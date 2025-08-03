@@ -1,129 +1,129 @@
-# from playwright.async_api import async_playwright
-# from .config import WEBSITE_USERNAME, WEBSITE_PASSWORD
-
-# async def login_and_fetch_report(report_url):
-#     async with async_playwright() as p:
-#         browser = await p.chromium.launch(headless=True)
-#         page = await (await browser.new_context()).new_page()
-#         await page.goto("https://protradingskills.com/wp-login.php")
-
-#         if await page.query_selector('input[id="user_login"]'):
-#             await page.fill('input[id="user_login"]', WEBSITE_USERNAME)
-#             await page.fill('input[id="user_pass"]', WEBSITE_PASSWORD)
-#             await page.click('input[id="wp-submit"]')
-#             await page.wait_for_load_state('networkidle')
-#             await page.goto(report_url)
-#             await page.wait_for_load_state('networkidle')
-#             await page.locator("article h2").wait_for(state='visible')
-            
-#         content = await page.locator("div.entry-content").text_content()
-
-#         await browser.close()
-#         return content
-from playwright.async_api import async_playwright
-from app.config import Config
+import asyncio
 import logging
-from typing import Optional
+from playwright.async_api import async_playwright, Browser, Page
+from typing import Optional, Dict, Any
+from .config import Config
+
+logger = logging.getLogger(__name__)
 
 class WebScraper:
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.username = Config.WEBSITE_USERNAME
-        self.password = Config.WEBSITE_PASSWORD
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
     
-    async def fetch_report_content(self, report_url: str) -> str:
+    async def __aenter__(self):
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-dev-shm-usage']
+        )
+        self.page = await self.browser.new_page(user_agent=Config.USER_AGENT)
+        await self.page.set_viewport_size({"width": 1920, "height": 1080})
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if self.browser:
+            await self.browser.close()
+        if hasattr(self, 'playwright'):
+            await self.playwright.stop()
+    
+    async def scrape_report(self, url: str) -> Dict[str, Any]:
         """
-        Fetch report content from secured website using Playwright
+        Scrape market report from secure website
         """
-        self.logger.info(f"Starting to fetch content from: {report_url}")
+        try:
+            logger.info(f"Starting scrape for URL: {url}")
+            
+            # Navigate to the URL
+            response = await self.page.goto("https://protradingskills.com/wp-login.php", wait_until="networkidle", timeout=30000)
+            
+            if not response or not response.ok:
+                raise Exception(f"Failed to load page: {response.status if response else 'No response'}")
+            
+            # Check if login is required
+            if await self._needs_login():
+                await self._handle_login()
+            
+            # Wait for content to load
+            await self.page.wait_for_load_state("networkidle")
+            await asyncio.sleep(2)  # Additional wait for dynamic content
+            
+            # Extract content
+            content = await self._extract_content(url)
+            
+            logger.info("Successfully scraped report content")
+            return {
+                "success": True,
+                "url": url,
+                "title": content.get("title"),
+                "html_content": content.get("html"),
+                "text_content": content.get("text")
+            }
+            
+        except Exception as e:
+            logger.error(f"Scraping failed for {url}: {e}")
+            return {
+                "success": False,
+                "url": url,
+                "error": str(e),
+                "html_content": "",
+                "text_content": ""
+            }
+    
+    async def _needs_login(self) -> bool:
+        """Check if the page requires login"""
+        login_input = await self.page.query_selector('input[id="user_login"]')
+        return login_input is not None
+
+    async def _handle_login(self):
+        """Handle login process with multiple fallback strategies"""
+        username = Config.PRO_USERNAME
+        password = Config.PRO_PASSWORD
         
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu',
-                    '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor'
-                ]
-            )
-            
-            try:
-                context = await browser.new_context(
-                    user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    viewport={'width': 1920, 'height': 1080}
-                )
-                
-                page = await context.new_page()
-                
-                # Navigate to the URL with extended timeout
-                await page.goto("https://protradingskills.com/wp-login.php", wait_until='networkidle', timeout=60000)
-
-                if await page.query_selector('input[id="user_login"]'):
-                    await page.fill('input[id="user_login"]', WEBSITE_USERNAME)
-                    await page.fill('input[id="user_pass"]', WEBSITE_PASSWORD)
-                    await page.click('input[id="wp-submit"]')
-                    await page.wait_for_load_state('networkidle')
-               
-                    
-                content = await page.locator("div.entry-content").text_content()
-                
-                # Handle login if required
-                if await self._handle_login(page):
-                    self.logger.info("Login successful")
-                    # Wait for page to load after login
-                    await page.wait_for_load_state('networkidle', timeout=30000)
-                
-                # Get page content
-                await page.goto(report_url)
-                await page.wait_for_load_state('networkidle')
-                await page.locator("article h2").wait_for(state='visible')
-                # await page.locator("div.entry-content").text_content()
-                # html_content = await page.content()
-                html_content = await page.locator("div.entry-content").all_text_contents()
-                self.logger.info(f"Successfully fetched report. Length: {len(html_content)}")
-                
-                return html_content
-                
-            except Exception as e:
-                self.logger.error(f"Error during scraping: {str(e)}")
-                # Take screenshot for debugging if possible
-                try:
-                    await page.screenshot(path='error_screenshot.png')
-                    self.logger.info("Error screenshot saved")
-                except:
-                    pass
-                raise e
-                
-            finally:
-                await browser.close()
+        if not username or not password:
+            raise Exception("Username and password required for login")
+        
+        await self.page.fill('input[id="user_login"]', username)
+        await self.page.fill('input[id="user_pass"]', password)
+        await self.page.click('input[id="wp-submit"]')
+                   
+        # Wait for navigation after login
+        await self.page.wait_for_load_state('networkidle', timeout=15000)
+        return True
     
-    async def _handle_login(self, page) -> bool:
-            if await page.query_selector('input[id="user_login"]'):
-                await page.fill('input[id="user_login"]', self.username)
-                await page.fill('input[id="user_pass"]', self.password)
-                await page.click('input[id="wp-submit"]')
-            else:
-                self.logger.error(f"Login process failed: {str(e)}")
-                raise Exception(f"Login failed: {str(e)}")
+    async def _extract_content(self, report_url) -> Dict[str, Any]:
+        """Extract content from the page"""
+        try:
+            # Go to the report page
+            await self.page.goto(report_url, wait_until="networkidle", timeout=30000)
 
-            # Wait for navigation after login
-            await page.wait_for_load_state('networkidle', timeout=15000)
+            # Get page title
+            title = await self.page.locator("article h2").wait_for(state='visible')
             
-            # Check if login was successful (look for common error indicators)
-            page_content = await page.content()
-            error_indicators = ['error', 'invalid', 'incorrect', 'failed', 'wrong']
+            # Content extraction strategies
+            content_element = self.page.locator("div.entry-content")
             
-            if any(indicator in page_content.lower() for indicator in error_indicators):
-                self.logger.warning("Possible login failure detected")
-                return False
+            html_content = await content_element.inner_html()
+            text_content = await content_element.inner_text()
+
+            return {
+                "title": title,
+                "html": html_content,
+                "text": text_content
+            }
             
-            return True
-            
-# Global instance
-web_scraper = WebScraper()
+        except Exception as e:
+            logger.error(f"Content extraction failed: {e}")
+            return {
+                "title": "Extraction Failed",
+                "html": "",
+                "text": ""
+            }
+
+def scrape_report_wrapper(url: str) -> Dict[str, Any]:
+    """Synchronous wrapper for async scraping"""
+    async def _scrape():
+        async with WebScraper() as scraper:
+            return await scraper.scrape_report(url)
+    
+    return asyncio.run(_scrape())

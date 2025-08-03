@@ -8,20 +8,24 @@ playwright==1.40.0
 lxml==4.9.3
 python-telegram-bot==20.7
 Werkzeug==2.3.7
-
+```
 ## 11. Environment Configuration (.env)
 
 ```bash
+# Pro Trading Skills
+PRO_USERNAME=
+PRO_PASSWORD=
+
 # Flask Configuration
-SECRET_KEY=your-super-secret-key-here
+SECRET_KEY=change-this-to-a-random-secret-key
 DEBUG=False
 LOG_LEVEL=INFO
 
-# Groq AI Configuration
+# Groq AI Configuration  
 GROQ_API_KEY=your-groq-api-key-here
 
 # Notion Configuration
-NOTION_API_KEY=your-notion-integration-token
+NOTION_API_KEY=secret_your-notion-integration-token
 NOTION_DATABASE_ID=your-notion-database-id
 
 # Telegram Configuration
@@ -32,8 +36,9 @@ TELEGRAM_CHAT_ID=your-telegram-chat-id
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 EMAIL_ADDRESS=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
+EMAIL_PASSWORD=your-gmail-app-password
 RECIPIENT_EMAIL=your-recipient@gmail.com
+```
 
 ## 12. Git Ignore File (.gitignore)
 
@@ -89,152 +94,37 @@ Thumbs.db
 ## 13. Test Files (tests/test_scraper.py)
 
 ```python
-import unittest
-from unittest.mock import patch, AsyncMock
-import asyncio
-from app.scraper import WebScraper, scrape_url
+import os
+import sys
+from dotenv import load_dotenv
 
-class TestWebScraper(unittest.TestCase):
-    
-    def test_scrape_url_basic(self):
-        """Test basic URL scraping functionality"""
-        # This is a basic test structure - you'll need to mock Playwright
-        # for actual testing without running a real browser
-        test_url = "https://httpbin.org/html"
-        
-        # In a real test, you'd mock the Playwright components
-        # For now, this is the structure
-        with patch('app.scraper.async_playwright') as mock_playwright:
-            mock_context = AsyncMock()
-            mock_browser = AsyncMock()
-            mock_page = AsyncMock()
-            
-            mock_playwright.return_value.start = AsyncMock(return_value=mock_context)
-            mock_context.chromium.launch = AsyncMock(return_value=mock_browser)
-            mock_browser.new_page = AsyncMock(return_value=mock_page)
-            
-            # Mock page responses
-            mock_page.goto = AsyncMock(return_value=AsyncMock(ok=True, status=200))
-            mock_page.title = AsyncMock(return_value="Test Page")
-            mock_page.inner_html = AsyncMock(return_value="<div>Test content</div>")
-            mock_page.inner_text = AsyncMock(return_value="Test content")
-            mock_page.query_selector_all = AsyncMock(return_value=[])
-            
-            # This test structure is ready for implementation
-            pass
-    
-    def test_extract_urls_from_email(self):
-        """Test URL extraction from email content"""
-        from app.extractor import ContentExtractor
-        
-        extractor = ContentExtractor()
-        
-        email_content = """
-        Check out this market report:
-        https://example.com/market-report-2024
-        
-        Also see: https://finance.example.com/analysis
-        
-        Tracking link (should be filtered): https://bit.ly/track123
-        """
-        
-        urls = extractor.extract_urls_from_email(email_content)
-        
-        self.assertIn("https://example.com/market-report-2024", urls)
-        self.assertIn("https://finance.example.com/analysis", urls)
-        # Tracking links should be filtered out
-        self.assertNotIn("https://bit.ly/track123", urls)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-if __name__ == '__main__':
-    unittest.main()
+from app.scraper import scrape_report_wrapper
+
+report_url = "https://protradingskills.com/analysis/instrucciones-antes-de-la-conferencia-de-la-fed-importante-ver-ya/"
+
+load_dotenv()
+
+def test_scraper():
+    print("🔍 Running scraper test...")
+    try:
+        report = scrape_report_wrapper(report_url)
+        print(report)
+    except Exception as e:
+        print("❌ Scraper test failed with error:", e)
+
+if __name__ == "__main__":
+    test_scraper()
+```
 
 ## 14. Integration Tests (tests/test_integrations.py)
 
 ```python
-import unittest
-from unittest.mock import patch, MagicMock
-import json
-from app import create_app
-from app.ai import GroqAIProcessor
-from app.extractor import ContentExtractor
 
-class TestIntegrations(unittest.TestCase):
-    
-    def setUp(self):
-        self.app = create_app()
-        self.app.config['TESTING'] = True
-        self.client = self.app.test_client()
-    
-    def test_health_endpoint(self):
-        """Test the health check endpoint"""
-        response = self.client.get('/api/health')
-        self.assertEqual(response.status_code, 200)
-        
-        data = json.loads(response.data)
-        self.assertEqual(data['status'], 'healthy')
-        self.assertIn('timestamp', data)
-    
-    @patch('app.ai.Groq')
-    def test_ai_processing(self, mock_groq):
-        """Test AI processing functionality"""
-        # Mock Groq response
-        mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "translated_content": "Test translated content",
-            "summary": "Test summary",
-            "key_insights": ["Insight 1", "Insight 2"],
-            "market_metrics": {
-                "mentioned_stocks": ["AAPL"],
-                "sectors": ["Technology"],
-                "market_sentiment": "positive"
-            },
-            "outlook": "Positive outlook",
-            "risk_factors": ["Risk 1"],
-            "action_items": ["Action 1"]
-        })
-        
-        mock_groq_instance = MagicMock()
-        mock_groq_instance.chat.completions.create.return_value = mock_response
-        mock_groq.return_value = mock_groq_instance
-        
-        processor = GroqAIProcessor()
-        result = processor.translate_and_analyze("Test content")
-        
-        self.assertIn('translated_content', result)
-        self.assertIn('summary', result)
-        self.assertIn('key_insights', result)
-    
-    def test_content_extraction(self):
-        """Test content extraction functionality"""
-        extractor = ContentExtractor()
-        
-        sample_html = """
-        <html>
-        <head><title>Market Report 2024</title></head>
-        <body>
-            <h1>Market Analysis</h1>
-            <p>The market showed strong performance this quarter.</p>
-            <h2>Key Metrics</h2>
-            <p>Revenue increased by 15% to $2.5 billion.</p>
-            <ul>
-                <li>Technology sector up 12%</li>
-                <li>Healthcare sector up 8%</li>
-            </ul>
-        </body>
-        </html>
-        """
-        
-        result = extractor.clean_html_content(sample_html)
-        
-        self.assertEqual(result['title'], 'Market Analysis')
-        self.assertIn('market', result['main_content'].lower())
-        self.assertTrue(len(result['headings']) > 0)
-        self.assertTrue(len(result['paragraphs']) > 0)
-
-if __name__ == '__main__':
-    unittest.main()
-
+```
 ## 15. PythonAnywhere WSGI Configuration (wsgi.py)
+
 
 ```python
 #!/usr/bin/python3.10
@@ -251,7 +141,7 @@ os.environ['PYTHONPATH'] = path
 
 from app import create_app
 application = create_app()
-
+```
 ## 16. Deployment Script (deploy.sh)
 
 ```bash
@@ -295,288 +185,22 @@ echo ""
 echo "🔗 Test endpoints:"
 echo "- Health check: https://yourusername.pythonanywhere.com/api/health"
 echo "- Process report: https://yourusername.pythonanywhere.com/api/webhook/process-report"
-
+```
 ## 17. Comprehensive README.md
 
 ```markdown
-# 🤖 Market Report AI Automation System
 
-An intelligent system that automatically processes market report emails, translates content, performs AI analysis, and delivers insights through multiple channels.
 
-## 🎯 Features
 
-- **📧 Email Detection**: Automatic Gmail monitoring via Zapier webhook
-- **🕷️ Smart Scraping**: Playwright-based web scraping with login handling
-- **🧠 AI Analysis**: Groq AI with Moonshot model for translation & analysis
-- **📊 Notion Integration**: Rich formatted reports with structured data
-- **📱 Telegram Notifications**: Instant mobile alerts
-- **📬 Email Reports**: Comprehensive HTML/text email summaries
-- **🛡️ Error Handling**: Comprehensive logging and error notifications
-
-## 🏗️ Architecture
-
-```
-Gmail → Zapier → Webhook → Flask API → [Scraper → AI → Notion/Telegram/Email]
-```
-
-### Core Components
-
-- `config.py` - Centralized configuration management
-- `ai.py` - Groq AI with Moonshot model integration  
-- `scraper.py` - Playwright web scraping with smart login
-- `extractor.py` - Content extraction and URL parsing
-- `notion_client.py` - Rich Notion integration with markdown
-- `notifier.py` - Telegram and email notifications
-- `routes.py` - Flask API endpoints
-
-## 🚀 Quick Start
-
-### 1. Prerequisites
-
-- Python 3.10+
-- PythonAnywhere account (or similar Python hosting)
-- Groq API key
-- Notion integration token
-- Telegram bot token
-- Gmail account for email notifications
-
-### 2. Installation
-
-```bash
-# Clone the repository
-git clone <your-repo-url>
-cd market_report_ai
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install Playwright browsers
-playwright install chromium
-
-# Set up environment
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-### 3. Configuration
-
-Edit `.env` file with your credentials:
-
-```bash
-# Groq AI
-GROQ_API_KEY=your-groq-api-key
-
-# Notion
-NOTION_API_KEY=secret_your-notion-integration-token
-NOTION_DATABASE_ID=your-database-id
-
-# Telegram
-TELEGRAM_BOT_TOKEN=your-bot-token
-TELEGRAM_CHAT_ID=your-chat-id
-
-# Email
-EMAIL_ADDRESS=your-email@gmail.com
-EMAIL_PASSWORD=your-app-password
-RECIPIENT_EMAIL=recipient@gmail.com
-```
-
-### 4. Deploy to PythonAnywhere
-
-```bash
-# Upload files to PythonAnywhere
-# Configure WSGI app pointing to wsgi.py
-# Set source code path to your project directory
-```
-
-### 5. Set up Zapier Integration
-
-1. Create Zapier account
-2. Set up Gmail trigger for new emails
-3. Add webhook action pointing to:
-   ```
-   https://yourusername.pythonanywhere.com/api/webhook/process-report
-   ```
-4. Configure webhook payload:
-   ```json
-   {
-       "email_html": "{{body_html}}",
-       "email_text": "{{body_plain}}",
-       "subject": "{{subject}}",
-       "from": "{{from}}",
-       "login_credentials": {
-           "username": "optional-login-username",
-           "password": "optional-login-password"
-       }
-   }
-   ```
-
-## 🧪 Testing
-
-### Health Check
-```bash
-curl https://yourusername.pythonanywhere.com/api/health
-```
-
-### Test Individual Components
-```bash
-# Test scraping
-curl -X POST https://yourusername.pythonanywhere.com/api/test-scraper \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
-
-# Test AI processing
-curl -X POST https://yourusername.pythonanywhere.com/api/test-ai \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Sample market report content..."}'
-
-# Test Notion integration
-curl -X POST https://yourusername.pythonanywhere.com/api/test-notion
-
-# Test Telegram notifications
-curl -X POST https://yourusername.pythonanywhere.com/api/test-telegram
-
-# Test email notifications
-curl -X POST https://yourusername.pythonanywhere.com/api/test-email
-```
-
-## 📊 Notion Database Setup
-
-Create a Notion database with these properties:
-
-- **Title** (Title)
-- **Source URL** (URL)
-- **Date** (Date)
-- **Status** (Select: New, Processed, Reviewed)
-- **Market Sentiment** (Select: Positive, Negative, Neutral)
-- **Word Count** (Number)
-- **Quality Score** (Number)
-- **Sectors** (Multi-select)
-- **Stocks** (Multi-select)
-
-## 🤖 Telegram Bot Setup
-
-1. Message @BotFather on Telegram
-2. Create new bot with `/newbot`
-3. Get bot token
-4. Get your chat ID by messaging your bot and visiting:
-   ```
-   https://api.telegram.org/bot<TOKEN>/getUpdates
-   ```
-
-## 📧 Email Setup
-
-For Gmail, use App Passwords:
-1. Enable 2FA on your Google account
-2. Generate App Password for "Mail"
-3. Use App Password in EMAIL_PASSWORD
-
-## 🔧 Advanced Configuration
-
-### Custom Login Handling
-
-The scraper supports multiple login strategies. Add credentials to webhook payload:
-
-```json
-{
-    "login_credentials": {
-        "username": "your-username",
-        "password": "your-password"
-    }
-}
-```
-
-### AI Model Configuration
-
-Modify `GROQ_MODEL` in config.py to use different models:
-- `moonshotai/kimi-k2-instruct` (recommended)
-- `llama-3.1-70b-versatile`
-- `mixtral-8x7b-32768`
-
-### Notion Formatting
-
-The system creates rich Notion pages with:
-- Executive summary
-- Key insights (bulleted)
-- Market metrics with sentiment
-- Outlook section
-- Risk factors (highlighted)
-- Action items (as to-do items)
-- Full translated content (collapsible)
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Scraping fails**: Check if site requires login credentials
-2. **AI processing fails**: Verify Groq API key and model availability
-3. **Notion creation fails**: Check database ID and integration permissions
-4. **Telegram notifications fail**: Verify bot token and chat ID
-5. **Email sending fails**: Use App Password, not regular password
-
-### Logs
-
-Check logs for detailed error information:
-```bash
-tail -f logs/market_report.log
-```
-
-### Error Notifications
-
-The system sends error notifications via Telegram when processing fails.
-
-## 🔒 Security
-
-- Store all credentials in environment variables
-- Use HTTPS for webhook endpoints
-- Implement rate limiting in production
-- Regularly rotate API keys
-- Monitor logs for suspicious activity
-
-## 📈 Monitoring
-
-The system includes:
-- Health check endpoint (`/api/health`)
-- Comprehensive logging
-- Error notifications via Telegram
-- Quality scoring for content assessment
-
-## 🚀 Production Deployment
-
-For production use:
-1. Set `DEBUG=False` in environment
-2. Use proper WSGI server (gunicorn, uwsgi)
-3. Implement rate limiting
-4. Set up monitoring and alerting
-5. Use environment-specific configurations
-6. Implement database for persistence
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Submit pull request
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
-## 🆘 Support
-
-For issues and questions:
-1. Check the troubleshooting guide
-2. Review logs for error details
-3. Test individual components using test endpoints
-4. Open GitHub issue with detailed information
-
----
-
-**Built with ❤️ for automated market intelligence**
 ```
 
 ## 18. Environment Template (.env.example)
 
 ```bash
+# Pro Trading Skills
+PRO_USERNAME=
+PRO_PASSWORD=
+
 # Flask Configuration
 SECRET_KEY=change-this-to-a-random-secret-key
 DEBUG=False
@@ -599,7 +223,7 @@ SMTP_PORT=587
 EMAIL_ADDRESS=your-email@gmail.com
 EMAIL_PASSWORD=your-gmail-app-password
 RECIPIENT_EMAIL=your-recipient@gmail.com
-
+```
 ## 8. Flask Application Setup (app/__init__.py)
 
 ```python
@@ -622,7 +246,7 @@ def create_app():
     app.register_blueprint(api, url_prefix='/api')
     
     return app
-
+```
 ## 9. Main Application Runner (run.py)
 
 ```python
@@ -630,15 +254,15 @@ from app import create_app
 
 app = create_app()
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
+if __name__ == "__main__":
+    app.run(host='0.0.0.0', port=5000)
+```
 ## 10. Requirements File (requirements.txt)
 
 ```
 Flask==2.3.3
 python-dotenv# Market Report AI Automation System
-
+```
 ## Project Structure
 ```
 market_report_ai/
@@ -670,8 +294,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    # Pro Trading Skills
+    PRO_USERNAME = os.getenv('PRO_USERNAME')
+    PRO_PASSWORD = os.getenv('PRO_PASSWORD')
+
     # Flask settings
-    SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here')
+    SECRET_KEY = os.getenv('SECRET_KEY')
     DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
     
     # Groq AI settings
@@ -718,36 +346,14 @@ class GroqAIProcessor:
         self.client = Groq(api_key=Config.GROQ_API_KEY)
         self.model = Config.GROQ_MODEL
     
-    def translate_and_analyze(self, content: str, source_language: str = "auto") -> Dict[str, Any]:
+    def translate_and_analyze(self, content: str) -> Dict[str, Any]:
         """
         Translate content to English and perform comprehensive analysis
         """
+        print(content)
+
         try:
-            prompt = f"""
-            You are a financial market analyst. Please analyze the following market report content and provide a comprehensive response in JSON format.
-
-            Content to analyze:
-            {content[:8000]}  # Limit content to avoid token limits
-
-            Please provide your response in the following JSON structure:
-            {{
-                "translated_content": "Full content translated to English",
-                "summary": "Concise 2-3 sentence summary of key points",
-                "key_insights": [
-                    "List of 3-5 key insights from the report"
-                ],
-                "market_metrics": {{
-                    "mentioned_stocks": ["List of stocks/companies mentioned"],
-                    "sectors": ["List of sectors discussed"],
-                    "market_sentiment": "positive/negative/neutral"
-                }},
-                "outlook": "Brief outlook or predictions mentioned",
-                "risk_factors": ["List of risks or concerns mentioned"],
-                "action_items": ["List of actionable insights or recommendations"]
-            }}
-
-            Ensure the translation maintains financial terminology accuracy and the analysis focuses on actionable market intelligence.
-            """
+            prompt = self._create_analysis_prompt(content[:8000]) # the Limit of 8000 is to do not over pass the tokens limit
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -761,9 +367,12 @@ class GroqAIProcessor:
                         "content": prompt
                     }
                 ],
-                temperature=0.1,
-                max_tokens=4000,
-                response_format={"type": "json_object"}
+                temperature=0.6,
+                max_completion_tokens=4096,
+                top_p=1,
+                stream=False,
+                response_format={"type": "json_object"},
+                stop=None,
             )
             
             result = json.loads(response.choices[0].message.content)
@@ -772,45 +381,68 @@ class GroqAIProcessor:
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            return self._fallback_analysis(content)
+            return self._fallback_analysis(response.choices[0].message.content)
         except Exception as e:
             logger.error(f"Groq AI processing failed: {e}")
-            return self._fallback_analysis(content)
+            return self._fallback_analysis(response.choices[0].message.content)
     
     def _fallback_analysis(self, content: str) -> Dict[str, Any]:
         """Fallback analysis when AI processing fails"""
         return {
-            "translated_content": content[:2000] + "..." if len(content) > 2000 else content,
+            "translated_content": content,
             "summary": "Market report analysis temporarily unavailable. Please review original content.",
             "key_insights": ["AI analysis temporarily unavailable"],
             "market_metrics": {
                 "mentioned_stocks": [],
                 "sectors": [],
-                "market_sentiment": "neutral"
+                "market_sentiment": "null"
             },
             "outlook": "Please review original report for outlook",
             "risk_factors": ["Manual review required"],
-            "action_items": ["Review original report manually"]
+            "action_items": ["Review original report manually"],
+            "confidence_level": ["Not Available"]
         }
+    
+        
+    def _create_analysis_prompt(self, content: str) -> str:
+        """Create a comprehensive analysis prompt for the AI"""
+        return f"""
+Analyze this financial market report and provide a comprehensive analysis in JSON format.
 
-    def quick_translate(self, text: str, target_language: str = "English") -> str:
-        """Quick translation for shorter texts"""
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Translate the following text to {target_language}, maintaining financial terminology accuracy:\n\n{text}"
-                    }
-                ],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            logger.error(f"Quick translation failed: {e}")
-            return text
+Please provide:
+1. **Language Detection**: Identify the original language
+2. **Translation**: If not in English, translate to English preserving all financial terms and numbers
+3. **Content Analysis**: Extract and analyze the key information
+
+Ensure the translation maintains financial terminology accuracy and the analysis focuses on actionable market intelligence.
+
+Response format (must be valid JSON):
+
+{{
+    "translated_content": "Full content translated to English",
+    "summary": "Comprehensive 3-4 paragraph summary highlighting the most critical insights",
+    "key_insights": [
+        "List of 5-7 most important insights from the report",
+        "Each insight should be actionable and specific"
+    ],
+    "market_metrics": {{
+        "mentioned_stocks": ["List of stocks/companies mentioned"],
+        "sectors": ["List of sectors discussed"],
+        "market_sentiment": "positive/negative/neutral"
+    }},
+    "outlook": "Brief outlook or predictions mentioned",
+    "risk_factors": ["List of risks or concerns mentioned"],
+    "action_items":  [
+        "Specific, actionable recommendations for investors/traders",
+        "Each recommendation should be concrete and implementable"
+    ],
+    "confidence_level": "High/Medium/Low - based on data quality and analysis certainty"
+}}
+
+Content to analyze:
+{content}
+"""
+    
 ```
 
 ## 3. Web Scraping with Playwright (app/scraper.py)
@@ -835,12 +467,8 @@ class WebScraper:
             headless=True,
             args=['--no-sandbox', '--disable-dev-shm-usage']
         )
-        self.page = await self.browser.new_page()
-        
-        # Set user agent and viewport
-        await self.page.set_user_agent(Config.USER_AGENT)
+        self.page = await self.browser.new_page(user_agent=Config.USER_AGENT)
         await self.page.set_viewport_size({"width": 1920, "height": 1080})
-        
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -849,7 +477,7 @@ class WebScraper:
         if hasattr(self, 'playwright'):
             await self.playwright.stop()
     
-    async def scrape_report(self, url: str, login_credentials: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    async def scrape_report(self, url: str) -> Dict[str, Any]:
         """
         Scrape market report from secure website
         """
@@ -857,32 +485,29 @@ class WebScraper:
             logger.info(f"Starting scrape for URL: {url}")
             
             # Navigate to the URL
-            response = await self.page.goto(url, wait_until="networkidle", timeout=30000)
+            response = await self.page.goto("https://protradingskills.com/wp-login.php", wait_until="networkidle", timeout=30000)
             
             if not response or not response.ok:
                 raise Exception(f"Failed to load page: {response.status if response else 'No response'}")
             
             # Check if login is required
             if await self._needs_login():
-                if not login_credentials:
-                    raise Exception("Login required but no credentials provided")
-                await self._handle_login(login_credentials)
+                await self._handle_login()
             
             # Wait for content to load
             await self.page.wait_for_load_state("networkidle")
             await asyncio.sleep(2)  # Additional wait for dynamic content
             
             # Extract content
-            content = await self._extract_content()
+            content = await self._extract_content(url)
             
             logger.info("Successfully scraped report content")
             return {
                 "success": True,
                 "url": url,
-                "title": content.get("title", "Market Report"),
-                "html_content": content.get("html", ""),
-                "text_content": content.get("text", ""),
-                "metadata": content.get("metadata", {})
+                "title": content.get("title"),
+                "html_content": content.get("html"),
+                "text_content": content.get("text")
             }
             
         except Exception as e:
@@ -892,204 +517,49 @@ class WebScraper:
                 "url": url,
                 "error": str(e),
                 "html_content": "",
-                "text_content": "",
-                "metadata": {}
+                "text_content": ""
             }
     
     async def _needs_login(self) -> bool:
         """Check if the page requires login"""
-        login_indicators = [
-            'input[type="password"]',
-            'input[name*="password"]',
-            'form[action*="login"]',
-            '.login-form',
-            '#login',
-            'button[type="submit"]:has-text("Login")',
-            'button:has-text("Sign In")'
-        ]
-        
-        for selector in login_indicators:
-            try:
-                element = await self.page.query_selector(selector)
-                if element:
-                    logger.info(f"Login required - found: {selector}")
-                    return True
-            except:
-                continue
-        
-        return False
-    
-    async def _handle_login(self, credentials: Dict[str, str]):
+        login_input = await self.page.query_selector('input[id="user_login"]')
+        return login_input is not None
+
+    async def _handle_login(self):
         """Handle login process with multiple fallback strategies"""
-        username = credentials.get("username", "")
-        password = credentials.get("password", "")
+        username = Config.PRO_USERNAME
+        password = Config.PRO_PASSWORD
         
         if not username or not password:
             raise Exception("Username and password required for login")
         
-        # Multiple selector strategies for username
-        username_selectors = [
-            'input[name="username"]',
-            'input[name="email"]',
-            'input[name="user"]',
-            'input[type="email"]',
-            'input[id*="username"]',
-            'input[id*="email"]',
-            'input[placeholder*="username"]',
-            'input[placeholder*="email"]'
-        ]
-        
-        # Multiple selector strategies for password
-        password_selectors = [
-            'input[name="password"]',
-            'input[type="password"]',
-            'input[id*="password"]',
-            'input[placeholder*="password"]'
-        ]
-        
-        # Login button selectors
-        login_button_selectors = [
-            'button[type="submit"]',
-            'input[type="submit"]',
-            'button:has-text("Login")',
-            'button:has-text("Sign In")',
-            'button:has-text("Log In")',
-            '.login-button',
-            '#login-button'
-        ]
-        
-        try:
-            # Fill username
-            username_filled = False
-            for selector in username_selectors:
-                try:
-                    element = await self.page.query_selector(selector)
-                    if element:
-                        await element.fill(username)
-                        username_filled = True
-                        logger.info(f"Username filled using selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not username_filled:
-                raise Exception("Could not find username field")
-            
-            # Fill password
-            password_filled = False
-            for selector in password_selectors:
-                try:
-                    element = await self.page.query_selector(selector)
-                    if element:
-                        await element.fill(password)
-                        password_filled = True
-                        logger.info(f"Password filled using selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not password_filled:
-                raise Exception("Could not find password field")
-            
-            # Click login button
-            login_clicked = False
-            for selector in login_button_selectors:
-                try:
-                    element = await self.page.query_selector(selector)
-                    if element:
-                        await element.click()
-                        login_clicked = True
-                        logger.info(f"Login button clicked using selector: {selector}")
-                        break
-                except:
-                    continue
-            
-            if not login_clicked:
-                # Try pressing Enter as fallback
-                await self.page.keyboard.press('Enter')
-                logger.info("Login attempted using Enter key")
-            
-            # Wait for navigation or error
-            try:
-                await self.page.wait_for_load_state("networkidle", timeout=15000)
-                logger.info("Login successful")
-            except:
-                # Check for error messages
-                error_selectors = ['.error', '.alert-danger', '.login-error', '[class*="error"]']
-                for selector in error_selectors:
-                    try:
-                        error_element = await self.page.query_selector(selector)
-                        if error_element:
-                            error_text = await error_element.inner_text()
-                            raise Exception(f"Login failed: {error_text}")
-                    except:
-                        continue
-                
-                logger.warning("Login status unclear, proceeding...")
-        
-        except Exception as e:
-            logger.error(f"Login failed: {e}")
-            raise
+        await self.page.fill('input[id="user_login"]', username)
+        await self.page.fill('input[id="user_pass"]', password)
+        await self.page.click('input[id="wp-submit"]')
+                   
+        # Wait for navigation after login
+        await self.page.wait_for_load_state('networkidle', timeout=15000)
+        return True
     
-    async def _extract_content(self) -> Dict[str, Any]:
+    async def _extract_content(self, report_url) -> Dict[str, Any]:
         """Extract content from the page"""
         try:
+            # Go to the report page
+            await self.page.goto(report_url, wait_until="networkidle", timeout=30000)
+
             # Get page title
-            title = await self.page.title()
+            title = await self.page.locator("article h2").wait_for(state='visible')
             
             # Content extraction strategies
-            content_selectors = [
-                'main',
-                '.content',
-                '.report-content',
-                '.main-content',
-                'article',
-                '.post-content',
-                '#content',
-                '.entry-content',
-                'body'
-            ]
+            content_element = self.page.locator("div.entry-content")
             
-            html_content = ""
-            text_content = ""
-            
-            # Try different content selectors
-            for selector in content_selectors:
-                try:
-                    element = await self.page.query_selector(selector)
-                    if element:
-                        html_content = await element.inner_html()
-                        text_content = await element.inner_text()
-                        if text_content.strip():  # Only use if we got meaningful content
-                            logger.info(f"Content extracted using selector: {selector}")
-                            break
-                except:
-                    continue
-            
-            # Fallback to full page if no specific content found
-            if not text_content.strip():
-                html_content = await self.page.inner_html('body')
-                text_content = await self.page.inner_text('body')
-                logger.info("Using full page content as fallback")
-            
-            # Extract metadata
-            metadata = {}
-            try:
-                # Extract meta tags
-                meta_tags = await self.page.query_selector_all('meta')
-                for meta in meta_tags:
-                    name = await meta.get_attribute('name') or await meta.get_attribute('property')
-                    content = await meta.get_attribute('content')
-                    if name and content:
-                        metadata[name] = content
-            except:
-                pass
-            
+            html_content = await content_element.inner_html()
+            text_content = await content_element.inner_text()
+
             return {
                 "title": title,
                 "html": html_content,
-                "text": text_content,
-                "metadata": metadata
+                "text": text_content
             }
             
         except Exception as e:
@@ -1097,282 +567,23 @@ class WebScraper:
             return {
                 "title": "Extraction Failed",
                 "html": "",
-                "text": "",
-                "metadata": {}
+                "text": ""
             }
 
-def scrape_url(url: str, login_credentials: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def scrape_report_wrapper(url: str) -> Dict[str, Any]:
     """Synchronous wrapper for async scraping"""
     async def _scrape():
         async with WebScraper() as scraper:
-            return await scraper.scrape_report(url, login_credentials)
+            return await scraper.scrape_report(url)
     
     return asyncio.run(_scrape())
+
 ```
 
 ## 4. Content Extraction (app/extractor.py)
 
 ```python
-import re
-import logging
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-from typing import Dict, List, Any, Optional
 
-logger = logging.getLogger(__name__)
-
-class ContentExtractor:
-    def __init__(self):
-        self.unwanted_tags = [
-            'script', 'style', 'nav', 'header', 'footer', 
-            'aside', 'advertisement', 'ads', 'sidebar'
-        ]
-        self.unwanted_classes = [
-            'ad', 'ads', 'advertisement', 'sidebar', 'nav',
-            'header', 'footer', 'social', 'share', 'comment'
-        ]
-    
-    def extract_urls_from_email(self, email_content: str) -> List[str]:
-        """Extract URLs from email content"""
-        # Pattern to match URLs
-        url_pattern = r'https?://(?:[-\w.])+(?:[:\d]+)?(?:/(?:[\w/_.])*(?:\?(?:[\w&=%.])*)?(?:#(?:[\w.])*)?)?'
-        urls = re.findall(url_pattern, email_content)
-        
-        # Filter for likely report URLs (avoid tracking links, etc.)
-        filtered_urls = []
-        for url in urls:
-            parsed = urlparse(url)
-            # Skip common tracking domains
-            tracking_domains = ['google.com', 'facebook.com', 'twitter.com', 'linkedin.com', 'bit.ly', 'tinyurl.com']
-            if not any(domain in parsed.netloc.lower() for domain in tracking_domains):
-                filtered_urls.append(url)
-        
-        logger.info(f"Extracted {len(filtered_urls)} URLs from email")
-        return filtered_urls
-    
-    def clean_html_content(self, html_content: str) -> Dict[str, Any]:
-        """Clean and extract meaningful content from HTML"""
-        try:
-            soup = BeautifulSoup(html_content, 'html.parser')
-            
-            # Remove unwanted tags
-            for tag_name in self.unwanted_tags:
-                for tag in soup.find_all(tag_name):
-                    tag.decompose()
-            
-            # Remove elements with unwanted classes
-            for class_name in self.unwanted_classes:
-                for element in soup.find_all(class_=re.compile(class_name, re.I)):
-                    element.decompose()
-            
-            # Extract title
-            title = ""
-            title_candidates = [
-                soup.find('h1'),
-                soup.find('title'),
-                soup.find(class_=re.compile('title', re.I)),
-                soup.find(id=re.compile('title', re.I))
-            ]
-            
-            for candidate in title_candidates:
-                if candidate and candidate.get_text().strip():
-                    title = candidate.get_text().strip()
-                    break
-            
-            # Extract main content
-            main_content = ""
-            content_candidates = [
-                soup.find('main'),
-                soup.find('article'),
-                soup.find(class_=re.compile('content|main|article', re.I)),
-                soup.find(id=re.compile('content|main|article', re.I)),
-                soup.find('body')
-            ]
-            
-            for candidate in content_candidates:
-                if candidate:
-                    main_content = candidate.get_text().strip()
-                    if len(main_content) > 100:  # Ensure we have substantial content
-                        break
-            
-            # Extract headings for structure
-            headings = []
-            for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-                text = heading.get_text().strip()
-                if text:
-                    headings.append({
-                        'level': int(heading.name[1]),
-                        'text': text
-                    })
-            
-            # Extract paragraphs
-            paragraphs = []
-            for p in soup.find_all('p'):
-                text = p.get_text().strip()
-                if text and len(text) > 20:  # Filter out very short paragraphs
-                    paragraphs.append(text)
-            
-            # Extract lists
-            lists = []
-            for ul in soup.find_all(['ul', 'ol']):
-                items = [li.get_text().strip() for li in ul.find_all('li')]
-                if items:
-                    lists.append(items)
-            
-            # Extract tables (for financial data)
-            tables = []
-            for table in soup.find_all('table'):
-                rows = []
-                for tr in table.find_all('tr'):
-                    cells = [td.get_text().strip() for td in tr.find_all(['td', 'th'])]
-                    if cells:
-                        rows.append(cells)
-                if rows:
-                    tables.append(rows)
-            
-            # Calculate content quality score
-            quality_score = self._calculate_content_quality(main_content, headings, paragraphs)
-            
-            return {
-                'title': title,
-                'main_content': main_content,
-                'headings': headings,
-                'paragraphs': paragraphs,
-                'lists': lists,
-                'tables': tables,
-                'quality_score': quality_score,
-                'word_count': len(main_content.split()),
-                'char_count': len(main_content)
-            }
-            
-        except Exception as e:
-            logger.error(f"HTML cleaning failed: {e}")
-            return {
-                'title': 'Extraction Failed',
-                'main_content': html_content[:1000] if html_content else '',
-                'headings': [],
-                'paragraphs': [],
-                'lists': [],
-                'tables': [],
-                'quality_score': 0,
-                'word_count': 0,
-                'char_count': 0
-            }
-    
-    def _calculate_content_quality(self, content: str, headings: List[Dict], paragraphs: List[str]) -> float:
-        """Calculate a quality score for the extracted content"""
-        score = 0.0
-        
-        # Length score (0-40 points)
-        word_count = len(content.split())
-        if word_count > 500:
-            score += 40
-        elif word_count > 200:
-            score += 30
-        elif word_count > 100:
-            score += 20
-        elif word_count > 50:
-            score += 10
-        
-        # Structure score (0-30 points)
-        if headings:
-            score += min(len(headings) * 5, 20)  # Up to 20 points for headings
-        if paragraphs:
-            score += min(len(paragraphs) * 2, 10)  # Up to 10 points for paragraphs
-        
-        # Financial content indicators (0-30 points)
-        financial_keywords = [
-            'market', 'stock', 'price', 'trading', 'investment', 'revenue',
-            'profit', 'loss', 'earnings', 'financial', 'analysis', 'forecast',
-            'economy', 'economic', 'growth', 'performance', 'sector', 'industry'
-        ]
-        
-        content_lower = content.lower()
-        keyword_matches = sum(1 for keyword in financial_keywords if keyword in content_lower)
-        score += min(keyword_matches * 2, 30)
-        
-        return min(score, 100.0)  # Cap at 100
-    
-    def extract_key_metrics(self, content: str) -> Dict[str, Any]:
-        """Extract key financial metrics from content"""
-        metrics = {
-            'currencies': [],
-            'percentages': [],
-            'numbers': [],
-            'dates': [],
-            'companies': [],
-            'financial_terms': []
-        }
-        
-        try:
-            # Extract currencies
-            currency_pattern = r'[\$€£¥₹]\s*[\d,]+\.?\d*[KMB]?'
-            metrics['currencies'] = list(set(re.findall(currency_pattern, content)))
-            
-            # Extract percentages
-            percentage_pattern = r'\d+\.?\d*\s*%'
-            metrics['percentages'] = list(set(re.findall(percentage_pattern, content)))
-            
-            # Extract large numbers
-            number_pattern = r'\b\d{1,3}(?:,\d{3})*(?:\.\d+)?\s*(?:million|billion|trillion|M|B|T)?\b'
-            metrics['numbers'] = list(set(re.findall(number_pattern, content, re.I)))
-            
-            # Extract dates
-            date_pattern = r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})\b'
-            metrics['dates'] = list(set(re.findall(date_pattern, content, re.I)))
-            
-            # Extract potential company names (capitalized words)
-            company_pattern = r'\b[A-Z][a-z]+ (?:Inc|Corp|Ltd|LLC|AG|SA|PLC|Co)\b'
-            metrics['companies'] = list(set(re.findall(company_pattern, content)))
-            
-            # Financial terms
-            financial_terms = [
-                'revenue', 'profit', 'loss', 'earnings', 'EBITDA', 'ROI', 'ROE',
-                'dividend', 'yield', 'volatility', 'beta', 'P/E', 'market cap',
-                'IPO', 'merger', 'acquisition', 'bullish', 'bearish'
-            ]
-            
-            content_lower = content.lower()
-            found_terms = [term for term in financial_terms if term.lower() in content_lower]
-            metrics['financial_terms'] = found_terms
-            
-        except Exception as e:
-            logger.error(f"Metrics extraction failed: {e}")
-        
-        return metrics
-    
-    def create_summary_structure(self, content: str, ai_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a structured summary combining extracted content and AI analysis"""
-        cleaned_content = self.clean_html_content(content)
-        metrics = self.extract_key_metrics(cleaned_content['main_content'])
-        
-        return {
-            'metadata': {
-                'title': cleaned_content['title'],
-                'word_count': cleaned_content['word_count'],
-                'quality_score': cleaned_content['quality_score'],
-                'extraction_timestamp': None  # Will be set by the calling function
-            },
-            'content': {
-                'original_text': cleaned_content['main_content'],
-                'translated_content': ai_analysis.get('translated_content', ''),
-                'structure': {
-                    'headings': cleaned_content['headings'],
-                    'paragraphs': len(cleaned_content['paragraphs']),
-                    'tables': len(cleaned_content['tables']),
-                    'lists': len(cleaned_content['lists'])
-                }
-            },
-            'analysis': {
-                'summary': ai_analysis.get('summary', ''),
-                'key_insights': ai_analysis.get('key_insights', []),
-                'market_metrics': ai_analysis.get('market_metrics', {}),
-                'outlook': ai_analysis.get('outlook', ''),
-                'risk_factors': ai_analysis.get('risk_factors', []),
-                'action_items': ai_analysis.get('action_items', [])
-            },
-            'extracted_metrics': metrics
-        }
 ```
 
 ## 5. Notion Integration (app/notion_client.py)
@@ -2261,6 +1472,3 @@ def test_email():
     except Exception as e:
         logger.error(f"Test email error: {e}")
         return jsonify({'error': str(e)}), 500
-Improve
-Explain
-Claude

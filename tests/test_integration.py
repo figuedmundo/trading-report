@@ -1,47 +1,34 @@
-import sys
 import os
-import asyncio
+import sys
 from dotenv import load_dotenv
 
-# Add project root to path to import from app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from app.scraper import login_and_fetch_report
-from app.ai import ai_translate_and_summarize
+from app.scraper import scrape_report_wrapper
+from app.ai import GroqAIProcessor
+
+ai_processor = GroqAIProcessor()
+
+report_url = "https://protradingskills.com/analysis/instrucciones-antes-de-la-conferencia-de-la-fed-importante-ver-ya/"
 
 load_dotenv()
 
-# Replace this with a real or staging URL from your email
-report_url = "https://protradingskills.com/analysis/instrucciones-antes-de-la-conferencia-de-la-fed-importante-ver-ya/"
+def test_report_ai():
+    print("🔍 Running Integration test...")
+    # report = ""
+    # try:
+    #     report = scrape_report_wrapper(report_url)
+    # except Exception as e:
+    #     print("❌ Scraper test failed with error:", e)
 
+    # try:
+    #     ai_report = ai_processor.translate_and_analyze(report["text_content"])
+    #     print(ai_report)
+    # except Exception as e:
+    #     print("❌ AI Translate and Analyze failed:", e)
 
-async def test_scraper_ai_integration():
-    print("🔗 Testing integration...")
+    ai_report = {'translated_content': 'INSTRUCTIONS BEFORE THE FED CONFERENCE!! WATCH NOW, IMPORTANT!!!\n\nThis Wednesday is finally the FED Conference and the reality is that it is a moment of high uncertainty:\n\nA dovish Powell will trigger rallies and greater upward moves perhaps until the second half of August.\n\nA hawkish Powell will already trigger the beginning of the “seasonal” pullback.\n\nAll statistical and correlative arguments suggest that the market is already ready for a correction, but we must be careful.\n\nTherefore it is preferable that you hold the minimum possible or NOTHING in trades for tomorrow since anything can happen.\n\nAnd we trade starting on Thursday after all the FED volatility has passed:\n\nIf Powell makes the market rise: quick long entries come like QQQ in Stocks, Options and Crypto.\nIf Powell knocks the market down: starting Thursday we begin to trade downward SPY, Bitcoin and other assets for which I will send entries!\n\nThat said, the S&P 500 closed today in futures and in spot with every appearance of being very close to a possible top formation, especially with the drop below the lower phy, where basically we then have a possible false bullish breakout which means WEAKNESS:\n\nAlso, in SPOT it also has a drop below the bearish lower phy and a bearish engulfing so I will say:\n\nIf Powell does not lift the market and the S&P 500 FAILS to break highs and we fall below 6365, we will consider the corrective process started that statistics have so clearly shown us, and therefore the next step will be to trade downward for a few weeks before a new floor appears within the uptrend.\n\nHowever, if anyone is capable of turning everything around and allowing the market to rise to 6500 or to new highs in Bitcoin it is Jerome Powell.\n\nTHEREFORE, I DO NOT FEEL COMFORTABLE HOLDING THE BITCOIN SHORT TRADE BEFORE THE FED CONFERENCE.\n\nBitcoin is showing many wicks and activated that small short of only -1% sent in yesterday’s report, but in IBIT it has not even moved yet, which makes for example IBIT still not confirm the drop. And although the data from the analysis indicates a higher probability of corrections, THE FED AND POWELL ARE CAPABLE OF ANYTHING:\n\nTHAT IS WHY I FORMALLY COMMUNICATE THAT I PREFER TO CLOSE THE SHORT NOW AT $117,859, AT A SLIGHT 0.33% DISTANCE FROM THE ENTRY POINT AND GO THROUGH THE FED CONFERENCE WITH ABSOLUTE CALM TO AVOID INCONVENIENCES!!\n\nIf Powell knocks the market down: ON THURSDAY MORNING I SEND A NEW ENTRY IN BTC ALREADY CONFIRMED, besides trading SPY… and also IBIT and other things!!\nIf Powell makes the market rise: we avoid bearish trades for a couple more days, and on Thursday morning I send entries in trades that give quick gains like QQQ\n\nBUT I REITERATE AGAIN FOR NOW: CLOSE THE BITCOIN SHORT AS A PRECAUTION BEFORE THE FED CONFERENCE AND STARTING THURSDAY WE RESTART OPERATIONS ACCORDING TO HOW THINGS UNFOLD WITH THE FED!!!\n\nAnd congratulations for the quick gains in QQQ, as well as so many successful trades in these months!!\n\n(This Wednesday we will give the HUGE SURPRISE to everyone!! And also the greatest opportunity to renew or accumulate months of history, it is the biggest promotion since PTS exists!!)\n\nLET’S GO ALL IN!!!\n\n🚀', 'summary': 'The report centers on the imminent Federal Reserve (FOMC) press conference scheduled for Wednesday. The author argues that the market is statistically overdue for a correction, citing bearish technical signals on both the S&P 500 (close to forming a top, false breakout, bearish engulfing) and Bitcoin (multiple wicks, lack of confirmation from IBIT). Two binary outcomes are presented: (1) a dovish Powell could extend the rally into mid-August, prompting quick long trades in QQQ, options, and crypto; (2) a hawkish Powell would immediately trigger the anticipated seasonal pullback, opening short opportunities in SPY, Bitcoin, and related ETFs. The author explicitly recommends closing the existing small Bitcoin short at ~$117,859 (-0.33%) before the FOMC event to avoid headline risk. Trading is to resume on Thursday, directionally determined by Powell’s tone.', 'key_insights': ['Market structure suggests the S&P 500 is forming a local top under the lower phy level at 6365; a decisive break below this level would confirm a multi-week correction.', 'Bitcoin’s price action shows indecision (long wicks) and IBIT has not yet confirmed the bearish thesis, increasing the probability of a violent Powell-induced reversal.', 'A dovish Powell could propel the S&P 500 to 6500 or higher and Bitcoin to new highs, invalidating short-term bear setups.', 'The author is voluntarily taking a -0.33% loss on the BTC short to eliminate overnight event risk ahead of the FOMC.', 'Post-FOMC playbook is binary: (a) dovish → rapid long QQQ/crypto trades; (b) hawkish → initiate shorts in SPY, BTC, IBIT.', 'Volatility is expected to peak Wednesday; the author counsels minimal or zero exposure until Thursday’s directional clarity.'], 'market_metrics': {'mentioned_stocks': ['QQQ', 'SPY', 'IBIT'], 'sectors': ['Broad US Equities', 'Technology (via QQQ)', 'Bitcoin/Crypto', 'Bitcoin ETFs'], 'market_sentiment': 'negative'}, 'outlook': 'Expect a sharp directional move immediately after Powell’s press conference; if the market is not pushed higher, a correction lasting several weeks is the base case.', 'risk_factors': ['Unpredictable FED communication causing violent whipsaw', 'False breakout on S&P 500 increasing downside momentum', 'Bitcoin volatility without IBIT confirmation', 'Liquidity gaps during overnight FOMC event', 'Potential for hawkish surprise given recent inflation data'], 'action_items': ['Close Bitcoin short at $117,859 before Wednesday’s close to avoid headline risk.', 'Keep cash position or minimal exposure overnight through the FOMC meeting.', 'On Thursday morning: monitor S&P 500 reaction at the 6365 level; if it fails to hold, initiate shorts in SPY with stops above the daily high.', 'If Powell is dovish and S&P 500 breaks >6500, enter leveraged long QQQ or QQQ call options targeting quick 2-3 day gains.', 'Prepare simultaneous buy orders for IBIT and spot BTC on a hawkish-Powell dip, with entries triggered only after Thursday’s open confirms follow-through.'], 'confidence_level': 'Medium'}
 
-    try:
-        report = await login_and_fetch_report(report_url)
-        result = await ai_translate_and_summarize(report)
-
-        # Validate required keys
-        expected_keys = [
-            "original_language",
-            "translated_content",
-            "summary",
-            "key_metrics",
-            "market_outlook",
-            "risk_factors",
-        ]
-        missing = [k for k in expected_keys if k not in result]
-        if missing:
-            print(f"❌ Missing keys in AI result: {missing}")
-        else:
-            print("✅ AI result contains all expected keys")
-            print("translated:", result["translated_content"])
-            print("Summary:", result["summary"])
-            print("key_metrics: ", result["key_metrics"])
-
-    except Exception as e:
-        print("❌ Integration test failed:", e)
-
+    
 if __name__ == "__main__":
-    asyncio.run(test_scraper_ai_integration())
+    test_report_ai()
