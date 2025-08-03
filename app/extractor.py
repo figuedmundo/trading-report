@@ -1,19 +1,23 @@
+import logging
 from bs4 import BeautifulSoup
-import re
+from urllib.parse import urlparse
+from typing import List
 
-def extract_url_from_email(body):
-    soup = BeautifulSoup(body, 'html.parser')
-    for a in soup.find_all('a', href=True):
-        if any(k in a['href'].lower() for k in ['report', 'market', 'analysis']):
-            return a['href']
-    urls = re.findall(r'https?://[^\s<>"\']+', body)
-    return urls[0] if urls else None
+logger = logging.getLogger(__name__)
 
-def extract_main_content(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    for tag in soup(['script', 'style', 'header', 'footer', 'aside']):
-        tag.decompose()
-    content = soup.select_one('main') or soup.select_one('article')
-    if content:
-        return content.get_text(strip=True)
-    return soup.get_text(separator=' ', strip=True)
+class ContentExtractor:
+    def extract_urls_from_email(self, email_content: str) -> List[str]:
+        """Extract URLs from email HTML content that match specific domain and path"""
+        soup = BeautifulSoup(email_content, "html.parser")
+        urls = []
+
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            parsed = urlparse(href)
+
+            # Only allow links from protradingskills.com with path starting with /analysis
+            if parsed.netloc.lower() == "protradingskills.com" and parsed.path.startswith("/analysis"):
+                urls.append(href)
+
+        logger.info(f"Extracted urls: {len(urls)}")
+        return urls
