@@ -1,8 +1,11 @@
 import logging
+import html2text
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import requests
 from .config import Config
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +20,14 @@ class NotionClient:
             "Notion-Version": "2022-06-28"
         }
     
-    def create_report_page(self, report_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
+    def create_report_page(self, analysis: Dict[str, Any], source_url: str) -> Dict[str, Any]:
         """Create a new page in Notion database for the market report"""
         try:
             # Prepare the page properties
-            properties = self._build_page_properties(report_data, source_url)
+            properties = self._build_page_properties(analysis, source_url)
             
             # Prepare the page content (blocks)
-            children = self._build_page_content(report_data)
+            children = self._build_page_content(analysis)
             
             # Create the page
             payload = {
@@ -62,10 +65,11 @@ class NotionClient:
                 "error": str(e)
             }
     
-    def _build_page_properties(self, report_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
+    def _build_page_properties(self, full_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
         """Build the properties for the Notion page"""
-        metadata = report_data.get('metadata', {})
-        analysis = report_data.get('analysis', {})
+
+        metadata = full_data.get('metadata', {})
+        analysis = full_data.get('analysis', {})
         metrics = analysis.get('market_metrics', {})
         
         properties = {
@@ -99,8 +103,10 @@ class NotionClient:
             "Word Count": {
                 "number": metadata.get('word_count', 0)
             },
-            "Quality Score": {
-                "number": metadata.get('quality_score', 0)
+            "Confidence Level": {
+                "select": {
+                    "name": analysis.get('confidence_level')
+                }
             }
         }
         
@@ -125,6 +131,7 @@ class NotionClient:
         """Build the content blocks for the Notion page"""
         blocks = []
         analysis = report_data.get('analysis', {})
+        content = report_data.get('content', {})
         
         try:
             # Summary section
@@ -134,7 +141,7 @@ class NotionClient:
                         "object": "block",
                         "type": "heading_2",
                         "heading_2": {
-                            "rich_text": [{"type": "text", "text": {"content": "📊 Executive Summary"}}]
+                            "rich_text": [{"type": "text", "text": {"content": "📊 Summary"}}]
                         }
                     },
                     {
@@ -182,7 +189,7 @@ class NotionClient:
                         "type": "paragraph",
                         "paragraph": {
                             "rich_text": [
-                                {"type": "text", "text": {"content": "**Mentioned Stocks:** ", "annotations": {"bold": True}}},
+                                {"type": "text", "text": {"content": "**Mentioned Stocks:** "}, "annotations": {"bold": True}},
                                 {"type": "text", "text": {"content": ", ".join(metrics['mentioned_stocks'][:10])}}
                             ]
                         }
@@ -194,8 +201,8 @@ class NotionClient:
                         "type": "paragraph",
                         "paragraph": {
                             "rich_text": [
-                                {"type": "text", "text": {"content": "**Sectors:** ", "annotations": {"bold": True}}},
-                                {"type": "text", "text": {"content": ", ".join(metrics['sectors'][:10])}}
+                                {"type": "text", "text": {"content": "**Sectors:** "}, "annotations": {"bold": True}},
+                                {"type": "text", "text": {"content": ", ".join(metrics['sectors'])}}
                             ]
                         }
                     })
@@ -258,14 +265,84 @@ class NotionClient:
                         }
                     })
             
-            # Full Translated Content (collapsible)
-            if report_data.get('content', {}).get('translated_content'):
+            # Images
+            if content.get("report_images"):
+                blocks.append({
+                    "object": "block",
+                    "type": "heading_2",
+                    "heading_2": {
+                        "rich_text": [
+                            {
+                                "type": "text",
+                                "text": {"content": "📷 Gallery"}
+                            }
+                        ]
+                    }
+                })
+
+                for img_url in content.get("report_images"):
+                    if img_url.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                        # Use image block for direct image URLs
+                        blocks.append({
+                            "object": "block",
+                            "type": "image",
+                            "image": {
+                                "type": "external",
+                                "external": {
+                                    "url": img_url
+                                }
+                            }
+                        })
+                    else:
+                        # Use bookmark block for non-direct image URLs (like TradingView)
+                        blocks.append({
+                            "object": "block",
+                            "type": "bookmark",
+                            "bookmark": {
+                                "url": img_url
+                            }
+                        })
+            
+            # # Full Translated Content (collapsible)
+            # if content.get('translated_content'):
+            #     blocks.extend([
+            #         {
+            #             "object": "block",
+            #             "type": "heading_2",
+            #             "heading_2": {
+            #                 "rich_text": [{"type": "text", "text": {"content": "📄 Full Report (Translated)"}}]
+            #             }
+            #         },
+            #         {
+            #             "object": "block",
+            #             "type": "toggle",
+            #             "toggle": {
+            #                 "rich_text": [{"type": "text", "text": {"content": "Click to expand full content"}}],
+            #                 "children": [
+            #                     {
+            #                         "object": "block",
+            #                         "type": "paragraph",
+            #                         "paragraph": {
+            #                             "rich_text": [{"type": "text", "text": {"content": content['translated_content'][:2000]}}]
+            #                         }
+            #                     }
+            #                 ]
+            #             }
+            #         }
+            #     ])
+        
+            # Original Report
+            # Convert HTML to plain text with markdown formatting preserved
+            html_converter = html2text.HTML2Text()
+            html_converter.ignore_links = False  # Keep links if present
+            html_converter.body_width = 0  # Prevent word wrapping
+            if content.get('original_html'):
                 blocks.extend([
                     {
                         "object": "block",
                         "type": "heading_2",
                         "heading_2": {
-                            "rich_text": [{"type": "text", "text": {"content": "📄 Full Report (Translated)"}}]
+                            "rich_text": [{"type": "text", "text": {"content": "📄 Original Report"}}]
                         }
                     },
                     {
@@ -278,7 +355,7 @@ class NotionClient:
                                     "object": "block",
                                     "type": "paragraph",
                                     "paragraph": {
-                                        "rich_text": [{"type": "text", "text": {"content": report_data['content']['translated_content'][:2000]}}]
+                                        "rich_text": [{"type": "text", "text": {"content": html_converter.handle(content.get("original_html", "")[:2000])}}]
                                     }
                                 }
                             ]

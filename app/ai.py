@@ -15,7 +15,6 @@ class GroqAIProcessor:
         """
         Translate content to English and perform comprehensive analysis
         """
-        print(content)
 
         try:
             prompt = self._create_analysis_prompt(content[:8000]) # the Limit of 8000 is to do not over pass the tokens limit
@@ -107,4 +106,38 @@ Response format (must be valid JSON):
 Content to analyze:
 {content}
 """
+    
+
+
+# Analyze this financial market report and provide a comprehensive analysis
+
+# Please provide:
+# 1. **Translation**: If not in English, translate to English preserving all financial terms and numbers
+# 2. **Content Analysis**: Extract and analyze the key information
+
+# Ensure the translation maintains financial terminology accuracy and the analysis focuses on actionable market intelligence.
+
+# I need the below points
+#     - "translation": "Full content translated to English",
+#     - "summary": "Comprehensive needed paragraphs summary highlighting the most critical insights",
+#     - "key insights": 
+#         "List of 5-7 most important insights from the report",
+#         "Each insight should be actionable and specific"
+#     - "market metrics": 
+#         "mentioned_stocks": ["List of stocks/companies mentioned"],
+#         "sectors": ["List of sectors discussed"],
+#         "market_sentiment": "positive/negative/neutral"
+    
+#     - "outlook": "Brief outlook or predictions mentioned",
+#     - "risk_factors": "List of risks or concerns mentioned",
+#     - "action items":  
+#         "Specific, actionable recommendations for investors/traders",
+#         "Each recommendation should be concrete and implementable"
+  
+#     - "confidence level": "High/Medium/Low - based on data quality and analysis certainty"
+
+
+# Content to analyze:
+# {content}
+# # """
     

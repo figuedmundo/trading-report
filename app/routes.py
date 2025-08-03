@@ -60,59 +60,50 @@ def process_report():
         target_url = urls[0]
         logger.info(f"Processing URL: {target_url}")
         
-        # Extract login credentials if provided
-        login_credentials = data.get('login_credentials')
-        
         # Scrape the report
-        scrape_result = scrape_report_wrapper(target_url, login_credentials)
+        scrape_report = scrape_report_wrapper(target_url)
         
-        if not scrape_result['success']:
-            error_msg = f"Failed to scrape report: {scrape_result.get('error', 'Unknown error')}"
+        if not scrape_report['success']:
+            error_msg = f"Failed to scrape report: {scrape_report.get('error', 'Unknown error')}"
             logger.error(error_msg)
             telegram_notifier.send_error_notification(error_msg, target_url)
             return jsonify({'error': error_msg}), 500
         
         # Process content with AI
-        content_text = scrape_result['text_content']
+        content_text = scrape_report['text_content']
         if not content_text.strip():
-            content_text = scrape_result['html_content']
+            content_text = scrape_report['html_content']
         
         ai_analysis = ai_processor.translate_and_analyze(content_text)
-        
-        # Create structured report data
-        report_data = extractor.create_summary_structure(
-            scrape_result['html_content'], 
-            ai_analysis
-        )
-        report_data['metadata']['extraction_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        full_response = extractor.create_summary_structure(scrape_report, ai_analysis)
         
         # Save to Notion
-        notion_result = notion_client.create_report_page(report_data, target_url)
+        notion_result = notion_client.create_report_page(full_response, target_url)
         notion_url = notion_result.get('page_url') if notion_result['success'] else None
         
         # Send Telegram notification
-        telegram_success = telegram_notifier.send_notification(report_data, notion_url)
+        telegram_success = telegram_notifier.send_notification(full_response, notion_url)
         
         # Send email
-        email_success = email_notifier.send_report_email(report_data, target_url)
+        email_success = email_notifier.send_report_email(full_response, target_url)
         
         # Prepare response
         response = {
             'success': True,
-            'report_title': report_data['metadata']['title'],
+            'report_title': scrape_report['title'],
             'source_url': target_url,
-            'word_count': report_data['metadata']['word_count'],
-            'quality_score': report_data['metadata']['quality_score'],
+            # 'word_count': ai_analysis['metadata']['word_count'],
+            # 'quality_score': report_data['metadata']['quality_score'],
             'notion_success': notion_result['success'],
             'telegram_success': telegram_success,
             'email_success': email_success,
-            'processed_at': report_data['metadata']['extraction_timestamp']
+            'processed_at': ai_analysis['metadata']['timestamp']
         }
         
         if notion_url:
             response['notion_url'] = notion_url
         
-        logger.info(f"Successfully processed report: {report_data['metadata']['title']}")
+        logger.info(f"Successfully processed report: {scrape_report['title']}")
         return jsonify(response)
         
     except Exception as e:

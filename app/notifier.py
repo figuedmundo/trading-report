@@ -1,4 +1,5 @@
 import logging
+import datetime
 import smtplib
 import requests
 from email.mime.text import MIMEText
@@ -49,7 +50,7 @@ class TelegramNotifier:
             if notion_url:
                 message += f"🔗 [View in Notion]({notion_url})\n"
             
-            message += f"⏰ {metadata.get('extraction_timestamp', 'Just now')}"
+            message += f"⏰ {metadata.get('timestamp', 'Just now')}"
             
             # Send message
             payload = {
@@ -120,7 +121,7 @@ class EmailNotifier:
             
             # Create message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"Market Report: {metadata.get('title', 'New Report')}"
+            msg['Subject'] = f"Pro-Trading Skills Report: {metadata.get('title', 'New Report')}"
             msg['From'] = self.email_address
             msg['To'] = self.recipient_email
             
@@ -128,10 +129,10 @@ class EmailNotifier:
             html_content = self._create_html_email(report_data, source_url)
             
             # Create plain text content
-            text_content = self._create_text_email(report_data, source_url)
+            # text_content = self._create_text_email(report_data, source_url)
             
             # Attach content
-            msg.attach(MIMEText(text_content, 'plain'))
+            # msg.attach(MIMEText(text_content, 'plain'))
             msg.attach(MIMEText(html_content, 'html'))
             
             # Send email
@@ -174,13 +175,13 @@ class EmailNotifier:
             <div class="header">
                 <h1>📊 {metadata.get('title', 'Market Report')}</h1>
                 <p><strong>Source:</strong> <a href="{source_url}">{source_url}</a></p>
-                <p><strong>Processed:</strong> {metadata.get('extraction_timestamp', 'Just now')}</p>
+                <p><strong>Processed:</strong> {metadata.get('timestamp', 'Just now')}</p>
             </div>
             
             <div class="section">
                 <h2>📝 Executive Summary</h2>
                 <p>{analysis.get('summary', 'Summary not available')}</p>
-            </div>
+            </div> 
         """
         
         # Key Insights
@@ -224,16 +225,27 @@ class EmailNotifier:
             for item in analysis['action_items']:
                 html += f"<li>{item}</li>"
             html += "</ul></div>"
+
+        # Original Content
+        if content.get('original_html'):
+            original_html = content.get('original_html')
+            html += f"""
+            <div class="section">
+                <h2>📄 Original Report </h2>
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9;">
+                    {original_html}
+                </div>
+            </div>
+            """
         
         # Full Content (truncated)
         if content.get('translated_content'):
             translated = content['translated_content']
-            preview = translated[:1000] + "..." if len(translated) > 1000 else translated
             html += f"""
             <div class="section">
                 <h2>📄 Full Report (Translated)</h2>
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9;">
-                    <p>{preview.replace('\n', '<br>')}</p>
+                    <p>{translated.replace('\n', '<br>')}</p>
                 </div>
             </div>
             """
@@ -256,7 +268,7 @@ class EmailNotifier:
         text = f"MARKET REPORT: {metadata.get('title', 'New Report')}\n"
         text += "=" * 50 + "\n\n"
         text += f"Source: {source_url}\n"
-        text += f"Processed: {metadata.get('extraction_timestamp', 'Just now')}\n\n"
+        text += f"Processed: {metadata.get('timestamp', 'Just now')}\n\n"
         
         text += "EXECUTIVE SUMMARY\n"
         text += "-" * 20 + "\n"
