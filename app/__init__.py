@@ -6,6 +6,7 @@ from .config import Config
 from .routes import api
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
+print("ENV LOADED:", os.getenv("GROQ_API_KEY"))
 
 def create_app():
     app = Flask(__name__)
