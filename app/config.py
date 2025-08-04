@@ -14,7 +14,7 @@ class Config:
     
     # Groq AI settings
     GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-    GROQ_MODEL = "moonshotai/kimi-k2-instruct"
+    GROQ_MODEL = os.getenv('GROQ_MODEL')
     
     # Notion settings
     NOTION_API_KEY = os.getenv('NOTION_API_KEY')
@@ -33,7 +33,7 @@ class Config:
     
     # Scraping settings
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    REQUEST_TIMEOUT = 30
+    REQUEST_TIMEOUT = 60
     MAX_RETRIES = 3
     
     # Logging

@@ -42,6 +42,8 @@ def process_report():
         email_html = data.get('email_html', '')
         email_text = data.get('email_text', '')
         subject = data.get('subject', 'Market Report')
+        send_email = data.get("send_email", True)
+        send_telegram_notification = data.get("send_telegram_notification", True)
         
         # Try to extract URLs from both HTML and plain text
         urls = []
@@ -82,22 +84,24 @@ def process_report():
         notion_url = notion_result.get('page_url') if notion_result['success'] else None
         
         # Send Telegram notification
-        telegram_success = telegram_notifier.send_notification(full_response, notion_url)
+        telegram_success = False
+        if send_telegram_notification: 
+            telegram_success = telegram_notifier.send_notification(full_response, notion_url)
         
         # Send email
-        email_success = email_notifier.send_report_email(full_response, target_url)
+        email_success = False
+        if send_email:
+            email_success = email_notifier.send_report_email(full_response, target_url)
         
         # Prepare response
         response = {
             'success': True,
             'report_title': scrape_report['title'],
             'source_url': target_url,
-            # 'word_count': ai_analysis['metadata']['word_count'],
-            # 'quality_score': report_data['metadata']['quality_score'],
             'notion_success': notion_result['success'],
             'telegram_success': telegram_success,
             'email_success': email_success,
-            'processed_at': ai_analysis['metadata']['timestamp']
+            'processed_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         
         if notion_url:

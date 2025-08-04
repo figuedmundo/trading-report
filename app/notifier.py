@@ -1,5 +1,5 @@
 import logging
-import datetime
+from datetime import datetime
 import smtplib
 import requests
 from email.mime.text import MIMEText
