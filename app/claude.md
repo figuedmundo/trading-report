@@ -1,13 +1,7 @@
 ```
-Flask==2.3.3
-python-dotenv==1.0.0
-groq==0.4.1
-requests==2.31.0
-beautifulsoup4==4.12.2
-playwright==1.40.0
-lxml==4.9.3
-python-telegram-bot==20.7
-Werkzeug==2.3.7
+Flask==3.0.3
+groq==0.30.0
+..
 ```
 ## 11. Environment Configuration (.env)
 
