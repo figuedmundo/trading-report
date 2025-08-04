@@ -90,7 +90,7 @@ Thumbs.db
 
 # Playwright browsers
 /ms-playwright/
-
+```
 ## 13. Test Files (tests/test_scraper.py)
 
 ```python
@@ -121,26 +121,85 @@ if __name__ == "__main__":
 ## 14. Integration Tests (tests/test_integrations.py)
 
 ```python
+import os
+import sys
+from dotenv import load_dotenv
+import json
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from app.scraper import scrape_report_wrapper
+from app.ai import GroqAIProcessor
+from app.notion_client import NotionClient
+from app.extractor import ContentExtractor
+from app.notifier import TelegramNotifier
+from app.notifier import EmailNotifier
+
+ai_processor = GroqAIProcessor()
+notion_client = NotionClient()
+content_extractor = ContentExtractor()
+telegram_notifier = TelegramNotifier()
+email_notifier = EmailNotifier()
+
+report_url = "https://protradingskills.com/analysis/instrucciones-antes-de-la-conferencia-de-la-fed-importante-ver-ya/"
+
+load_dotenv()
+
+def test_report_ai():
+    print("🔍 Running Integration test...")
+    report = scrape_report_wrapper(report_url)
+
+    ai_analysis = ai_processor.translate_and_analyze(report["text_content"])
+    full_response = content_extractor.create_summary_structure(report, ai_analysis)
+
+    # Save to Notion
+    notion_result = notion_client.create_report_page(full_response, report_url)
+    notion_url = notion_result.get('page_url') if notion_result['success'] else None
+
+    #  # Send Telegram notification
+    telegram_success = telegram_notifier.send_notification(full_response, notion_url)
+    print(telegram_success)
+    # Send email
+    email_success = email_notifier.send_report_email(full_response, report_url)
+    print(email_success)
+
+    
+if __name__ == "__main__":
+    test_report_ai()
 
 ```
 ## 15. PythonAnywhere WSGI Configuration (wsgi.py)
 
 
 ```python
-#!/usr/bin/python3.10
+#!/usr/bin/python3.13
 import sys
 import os
 
-# Add your project directory to the sys.path
-path = '/home/yourusername/market_report_ai'
+# IMPORTANT: Replace 'yourusername' with your actual username
+username = 'username' 
+project_name = 'market_report_ai'
+
+# Add your project directory to Python path
+path = f'/home/{username}/{project_name}'
 if path not in sys.path:
-    sys.path.append(path)
+    sys.path.insert(0, path)
 
 # Set environment variables
+os.environ['FLASK_APP'] = 'run.py'
 os.environ['PYTHONPATH'] = path
 
+# Python 3.13 specific optimizations
+# Enable the new JIT compiler if available
+os.environ.setdefault('PYTHONUNBUFFERED', '1')
+
+# Import your Flask application
 from app import create_app
 application = create_app()
+
+# For debugging (remove in production)
+if __name__ == "__main__":
+    application.run()
 ```
 ## 16. Deployment Script (deploy.sh)
 
@@ -153,11 +212,14 @@ echo "🚀 Starting deployment of Market Report AI..."
 
 # Update system packages
 echo "📦 Installing system dependencies..."
-pip3.10 install --user -r requirements.txt
+pip3 install --user -r requirements.txt
 
 # Install Playwright browsers
 echo "🎭 Installing Playwright browsers..."
-python3.10 -m playwright install chromium
+python3 -m playwright install chromium
+
+# If you get permission issues, try:
+# python3 -m playwright install --with-deps chromium
 
 # Set up environment
 echo "🔧 Setting up environment..."
@@ -260,8 +322,8 @@ if __name__ == "__main__":
 ## 10. Requirements File (requirements.txt)
 
 ```
-Flask==2.3.3
-python-dotenv# Market Report AI Automation System
+Flask==3.0.3
+python-dotenv
 ```
 ## Project Structure
 ```
@@ -450,8 +512,9 @@ Content to analyze:
 ```python
 import asyncio
 import logging
+from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, Browser, Page
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -485,7 +548,7 @@ class WebScraper:
             logger.info(f"Starting scrape for URL: {url}")
             
             # Navigate to the URL
-            response = await self.page.goto("https://protradingskills.com/wp-login.php", wait_until="networkidle", timeout=30000)
+            response = await self.page.goto("https://protradingskills.com/wp-login.php", wait_until="networkidle", timeout=60000)
             
             if not response or not response.ok:
                 raise Exception(f"Failed to load page: {response.status if response else 'No response'}")
@@ -507,7 +570,8 @@ class WebScraper:
                 "url": url,
                 "title": content.get("title"),
                 "html_content": content.get("html"),
-                "text_content": content.get("text")
+                "text_content": content.get("text"),
+                "report_images": content.get("images")
             }
             
         except Exception as e:
@@ -517,7 +581,8 @@ class WebScraper:
                 "url": url,
                 "error": str(e),
                 "html_content": "",
-                "text_content": ""
+                "text_content": "",
+                "report_images": []
             }
     
     async def _needs_login(self) -> bool:
@@ -538,28 +603,32 @@ class WebScraper:
         await self.page.click('input[id="wp-submit"]')
                    
         # Wait for navigation after login
-        await self.page.wait_for_load_state('networkidle', timeout=15000)
+        await self.page.wait_for_load_state('networkidle', timeout=60000)
         return True
     
     async def _extract_content(self, report_url) -> Dict[str, Any]:
         """Extract content from the page"""
         try:
             # Go to the report page
-            await self.page.goto(report_url, wait_until="networkidle", timeout=30000)
+            await self.page.goto(report_url, wait_until="networkidle", timeout=100000)
 
             # Get page title
-            title = await self.page.locator("article h2").wait_for(state='visible')
+            await self.page.locator("article h2").wait_for(state='visible', timeout=100000)
+            title = await self.page.locator("article h2").text_content()
             
             # Content extraction strategies
             content_element = self.page.locator("div.entry-content")
             
             html_content = await content_element.inner_html()
+            html_content = self._clean_scripts(html_content)
             text_content = await content_element.inner_text()
+            images = self._get_images(html_content)
 
             return {
                 "title": title,
                 "html": html_content,
-                "text": text_content
+                "text": text_content,
+                "images": images
             }
             
         except Exception as e:
@@ -567,8 +636,32 @@ class WebScraper:
             return {
                 "title": "Extraction Failed",
                 "html": "",
-                "text": ""
+                "text": "",
+                "images": []
             }
+        
+    def _get_images(self, html_report) -> List[str]:
+        soup = BeautifulSoup(html_report, "html.parser")
+
+        # Extract external image URLs
+        images = []
+        for img in soup.find_all("img"):
+            src = img.get("src")
+            if src:
+                images.append(src)
+
+        return images
+    
+    def _clean_scripts(self, html): 
+        # Parse the HTML
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # Remove all <script> tags and their contents
+        for script in soup.find_all('script'):
+            script.decompose()
+
+        # Cleaned HTML
+        return str(soup)
 
 def scrape_report_wrapper(url: str) -> Dict[str, Any]:
     """Synchronous wrapper for async scraping"""
@@ -583,17 +676,88 @@ def scrape_report_wrapper(url: str) -> Dict[str, Any]:
 ## 4. Content Extraction (app/extractor.py)
 
 ```python
+import logging
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
+from typing import List, Dict, Any
+from datetime import datetime
 
+
+logger = logging.getLogger(__name__)
+
+class ContentExtractor:
+    def extract_urls_from_email(self, email_content: str) -> List[str]:
+        """Extract URLs from email HTML content that match specific domain and path"""
+        soup = BeautifulSoup(email_content, "html.parser")
+        urls = []
+
+        for link in soup.find_all("a", href=True):
+            href = link["href"]
+            parsed = urlparse(href)
+
+            # Only allow links from protradingskills.com with path starting with /analysis
+            if parsed.netloc.lower() == "protradingskills.com" and parsed.path.startswith("/analysis"):
+                urls.append(href)
+
+        logger.info(f"Extracted urls: {len(urls)}")
+        return urls
+    
+
+    def create_summary_structure(self, scraped_report: str, ai_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a structured summary combining extracted content and AI analysis"""
+        cleaned_content = self.clean_html_content(scraped_report)
+        
+        return {
+            'metadata': {
+                'title': cleaned_content['title'],
+                'word_count': cleaned_content['word_count'],
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')  
+            },
+            'content': {
+                'original_text': cleaned_content['main_content'],
+                'translated_content': ai_analysis.get('translated_content', ''),
+                'original_html': scraped_report.get('html_content', ''),
+                'report_images': scraped_report.get('report_images')
+            },
+            'analysis': {
+                'summary': ai_analysis.get('summary', ''),
+                'key_insights': ai_analysis.get('key_insights', []),
+                'market_metrics': ai_analysis.get('market_metrics', {}),
+                'outlook': ai_analysis.get('outlook', ''),
+                'risk_factors': ai_analysis.get('risk_factors', []),
+                'action_items': ai_analysis.get('action_items', []),
+                'confidence_level': ai_analysis.get('confidence_level', '')
+            }
+        }
+    
+    def clean_html_content(self, report: dict) -> dict:
+        """Clean HTML content and prepare structured data from the scraped report"""
+
+        title = report.get("title") or ""
+        html_content = report.get("html_content") or ""
+        
+        # Strip HTML tags
+        soup = BeautifulSoup(html_content, "html.parser")
+        text = soup.get_text(separator="\n", strip=True)
+
+        return {
+            "title": title.strip(),
+            "main_content": text,
+            "word_count": len(text.split())
+        }
 ```
 
 ## 5. Notion Integration (app/notion_client.py)
 
 ```python
 import logging
+import html2text
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 import requests
 from .config import Config
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -608,14 +772,14 @@ class NotionClient:
             "Notion-Version": "2022-06-28"
         }
     
-    def create_report_page(self, report_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
+    def create_report_page(self, analysis: Dict[str, Any], source_url: str) -> Dict[str, Any]:
         """Create a new page in Notion database for the market report"""
         try:
             # Prepare the page properties
-            properties = self._build_page_properties(report_data, source_url)
+            properties = self._build_page_properties(analysis, source_url)
             
             # Prepare the page content (blocks)
-            children = self._build_page_content(report_data)
+            children = self._build_page_content(analysis)
             
             # Create the page
             payload = {
@@ -653,10 +817,11 @@ class NotionClient:
                 "error": str(e)
             }
     
-    def _build_page_properties(self, report_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
+    def _build_page_properties(self, full_data: Dict[str, Any], source_url: str) -> Dict[str, Any]:
         """Build the properties for the Notion page"""
-        metadata = report_data.get('metadata', {})
-        analysis = report_data.get('analysis', {})
+
+        metadata = full_data.get('metadata', {})
+        analysis = full_data.get('analysis', {})
         metrics = analysis.get('market_metrics', {})
         
         properties = {
@@ -690,8 +855,10 @@ class NotionClient:
             "Word Count": {
                 "number": metadata.get('word_count', 0)
             },
-            "Quality Score": {
-                "number": metadata.get('quality_score', 0)
+            "Confidence Level": {
+                "select": {
+                    "name": analysis.get('confidence_level')
+                }
             }
         }
         
@@ -716,6 +883,7 @@ class NotionClient:
         """Build the content blocks for the Notion page"""
         blocks = []
         analysis = report_data.get('analysis', {})
+        content = report_data.get('content', {})
         
         try:
             # Summary section
@@ -725,7 +893,7 @@ class NotionClient:
                         "object": "block",
                         "type": "heading_2",
                         "heading_2": {
-                            "rich_text": [{"type": "text", "text": {"content": "📊 Executive Summary"}}]
+                            "rich_text": [{"type": "text", "text": {"content": "📊 Summary"}}]
                         }
                     },
                     {
@@ -773,7 +941,7 @@ class NotionClient:
                         "type": "paragraph",
                         "paragraph": {
                             "rich_text": [
-                                {"type": "text", "text": {"content": "**Mentioned Stocks:** ", "annotations": {"bold": True}}},
+                                {"type": "text", "text": {"content": "**Mentioned Stocks:** "}, "annotations": {"bold": True}},
                                 {"type": "text", "text": {"content": ", ".join(metrics['mentioned_stocks'][:10])}}
                             ]
                         }
@@ -785,8 +953,8 @@ class NotionClient:
                         "type": "paragraph",
                         "paragraph": {
                             "rich_text": [
-                                {"type": "text", "text": {"content": "**Sectors:** ", "annotations": {"bold": True}}},
-                                {"type": "text", "text": {"content": ", ".join(metrics['sectors'][:10])}}
+                                {"type": "text", "text": {"content": "**Sectors:** "}, "annotations": {"bold": True}},
+                                {"type": "text", "text": {"content": ", ".join(metrics['sectors'])}}
                             ]
                         }
                     })
@@ -849,14 +1017,84 @@ class NotionClient:
                         }
                     })
             
-            # Full Translated Content (collapsible)
-            if report_data.get('content', {}).get('translated_content'):
+            # Images
+            if content.get("report_images"):
+                blocks.append({
+                    "object": "block",
+                    "type": "heading_2",
+                    "heading_2": {
+                        "rich_text": [
+                            {
+                                "type": "text",
+                                "text": {"content": "📷 Gallery"}
+                            }
+                        ]
+                    }
+                })
+
+                for img_url in content.get("report_images"):
+                    if img_url.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif')):
+                        # Use image block for direct image URLs
+                        blocks.append({
+                            "object": "block",
+                            "type": "image",
+                            "image": {
+                                "type": "external",
+                                "external": {
+                                    "url": img_url
+                                }
+                            }
+                        })
+                    else:
+                        # Use bookmark block for non-direct image URLs (like TradingView)
+                        blocks.append({
+                            "object": "block",
+                            "type": "bookmark",
+                            "bookmark": {
+                                "url": img_url
+                            }
+                        })
+            
+            # # Full Translated Content (collapsible)
+            # if content.get('translated_content'):
+            #     blocks.extend([
+            #         {
+            #             "object": "block",
+            #             "type": "heading_2",
+            #             "heading_2": {
+            #                 "rich_text": [{"type": "text", "text": {"content": "📄 Full Report (Translated)"}}]
+            #             }
+            #         },
+            #         {
+            #             "object": "block",
+            #             "type": "toggle",
+            #             "toggle": {
+            #                 "rich_text": [{"type": "text", "text": {"content": "Click to expand full content"}}],
+            #                 "children": [
+            #                     {
+            #                         "object": "block",
+            #                         "type": "paragraph",
+            #                         "paragraph": {
+            #                             "rich_text": [{"type": "text", "text": {"content": content['translated_content'][:2000]}}]
+            #                         }
+            #                     }
+            #                 ]
+            #             }
+            #         }
+            #     ])
+        
+            # Original Report
+            # Convert HTML to plain text with markdown formatting preserved
+            html_converter = html2text.HTML2Text()
+            html_converter.ignore_links = False  # Keep links if present
+            html_converter.body_width = 0  # Prevent word wrapping
+            if content.get('original_html'):
                 blocks.extend([
                     {
                         "object": "block",
                         "type": "heading_2",
                         "heading_2": {
-                            "rich_text": [{"type": "text", "text": {"content": "📄 Full Report (Translated)"}}]
+                            "rich_text": [{"type": "text", "text": {"content": "📄 Original Report"}}]
                         }
                     },
                     {
@@ -869,7 +1107,7 @@ class NotionClient:
                                     "object": "block",
                                     "type": "paragraph",
                                     "paragraph": {
-                                        "rich_text": [{"type": "text", "text": {"content": report_data['content']['translated_content'][:2000]}}]
+                                        "rich_text": [{"type": "text", "text": {"content": html_converter.handle(content.get("original_html", "")[:2000])}}]
                                     }
                                 }
                             ]
@@ -918,10 +1156,12 @@ class NotionClient:
             logger.error(f"Failed to update Notion page status: {e}")
             return False
 
-## 6. Telegram Notifications (app/notifier.py)
+```
+## 6. Notifications (app/notifier.py)
 
 ```python
 import logging
+import datetime
 import smtplib
 import requests
 from email.mime.text import MIMEText
@@ -972,7 +1212,7 @@ class TelegramNotifier:
             if notion_url:
                 message += f"🔗 [View in Notion]({notion_url})\n"
             
-            message += f"⏰ {metadata.get('extraction_timestamp', 'Just now')}"
+            message += f"⏰ {metadata.get('timestamp', 'Just now')}"
             
             # Send message
             payload = {
@@ -1043,7 +1283,7 @@ class EmailNotifier:
             
             # Create message
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"Market Report: {metadata.get('title', 'New Report')}"
+            msg['Subject'] = f"Pro-Trading Skills Report: {metadata.get('title', 'New Report')}"
             msg['From'] = self.email_address
             msg['To'] = self.recipient_email
             
@@ -1051,10 +1291,10 @@ class EmailNotifier:
             html_content = self._create_html_email(report_data, source_url)
             
             # Create plain text content
-            text_content = self._create_text_email(report_data, source_url)
+            # text_content = self._create_text_email(report_data, source_url)
             
             # Attach content
-            msg.attach(MIMEText(text_content, 'plain'))
+            # msg.attach(MIMEText(text_content, 'plain'))
             msg.attach(MIMEText(html_content, 'html'))
             
             # Send email
@@ -1097,13 +1337,13 @@ class EmailNotifier:
             <div class="header">
                 <h1>📊 {metadata.get('title', 'Market Report')}</h1>
                 <p><strong>Source:</strong> <a href="{source_url}">{source_url}</a></p>
-                <p><strong>Processed:</strong> {metadata.get('extraction_timestamp', 'Just now')}</p>
+                <p><strong>Processed:</strong> {metadata.get('timestamp', 'Just now')}</p>
             </div>
             
             <div class="section">
                 <h2>📝 Executive Summary</h2>
                 <p>{analysis.get('summary', 'Summary not available')}</p>
-            </div>
+            </div> 
         """
         
         # Key Insights
@@ -1147,16 +1387,27 @@ class EmailNotifier:
             for item in analysis['action_items']:
                 html += f"<li>{item}</li>"
             html += "</ul></div>"
+
+        # Original Content
+        if content.get('original_html'):
+            original_html = content.get('original_html')
+            html += f"""
+            <div class="section">
+                <h2>📄 Original Report </h2>
+                <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9;">
+                    {original_html}
+                </div>
+            </div>
+            """
         
         # Full Content (truncated)
         if content.get('translated_content'):
             translated = content['translated_content']
-            preview = translated[:1000] + "..." if len(translated) > 1000 else translated
             html += f"""
             <div class="section">
                 <h2>📄 Full Report (Translated)</h2>
                 <div style="max-height: 300px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; background-color: #f9f9f9;">
-                    <p>{preview.replace('\n', '<br>')}</p>
+                    <p>{translated.replace('\n', '<br>')}</p>
                 </div>
             </div>
             """
@@ -1179,7 +1430,7 @@ class EmailNotifier:
         text = f"MARKET REPORT: {metadata.get('title', 'New Report')}\n"
         text += "=" * 50 + "\n\n"
         text += f"Source: {source_url}\n"
-        text += f"Processed: {metadata.get('extraction_timestamp', 'Just now')}\n\n"
+        text += f"Processed: {metadata.get('timestamp', 'Just now')}\n\n"
         
         text += "EXECUTIVE SUMMARY\n"
         text += "-" * 20 + "\n"
@@ -1216,13 +1467,15 @@ class EmailNotifier:
         
         return text
 
+```
+
 ## 7. Flask Routes (app/routes.py)
 
 ```python
 import logging
 from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
-from .scraper import scrape_url
+from .scraper import scrape_report_wrapper
 from .extractor import ContentExtractor
 from .ai import GroqAIProcessor
 from .notion_client import NotionClient
@@ -1281,59 +1534,50 @@ def process_report():
         target_url = urls[0]
         logger.info(f"Processing URL: {target_url}")
         
-        # Extract login credentials if provided
-        login_credentials = data.get('login_credentials')
-        
         # Scrape the report
-        scrape_result = scrape_url(target_url, login_credentials)
+        scrape_report = scrape_report_wrapper(target_url)
         
-        if not scrape_result['success']:
-            error_msg = f"Failed to scrape report: {scrape_result.get('error', 'Unknown error')}"
+        if not scrape_report['success']:
+            error_msg = f"Failed to scrape report: {scrape_report.get('error', 'Unknown error')}"
             logger.error(error_msg)
             telegram_notifier.send_error_notification(error_msg, target_url)
             return jsonify({'error': error_msg}), 500
         
         # Process content with AI
-        content_text = scrape_result['text_content']
+        content_text = scrape_report['text_content']
         if not content_text.strip():
-            content_text = scrape_result['html_content']
+            content_text = scrape_report['html_content']
         
         ai_analysis = ai_processor.translate_and_analyze(content_text)
-        
-        # Create structured report data
-        report_data = extractor.create_summary_structure(
-            scrape_result['html_content'], 
-            ai_analysis
-        )
-        report_data['metadata']['extraction_timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        full_response = extractor.create_summary_structure(scrape_report, ai_analysis)
         
         # Save to Notion
-        notion_result = notion_client.create_report_page(report_data, target_url)
+        notion_result = notion_client.create_report_page(full_response, target_url)
         notion_url = notion_result.get('page_url') if notion_result['success'] else None
         
         # Send Telegram notification
-        telegram_success = telegram_notifier.send_notification(report_data, notion_url)
+        telegram_success = telegram_notifier.send_notification(full_response, notion_url)
         
         # Send email
-        email_success = email_notifier.send_report_email(report_data, target_url)
+        email_success = email_notifier.send_report_email(full_response, target_url)
         
         # Prepare response
         response = {
             'success': True,
-            'report_title': report_data['metadata']['title'],
+            'report_title': scrape_report['title'],
             'source_url': target_url,
-            'word_count': report_data['metadata']['word_count'],
-            'quality_score': report_data['metadata']['quality_score'],
+            # 'word_count': ai_analysis['metadata']['word_count'],
+            # 'quality_score': report_data['metadata']['quality_score'],
             'notion_success': notion_result['success'],
             'telegram_success': telegram_success,
             'email_success': email_success,
-            'processed_at': report_data['metadata']['extraction_timestamp']
+            'processed_at': ai_analysis['metadata']['timestamp']
         }
         
         if notion_url:
             response['notion_url'] = notion_url
         
-        logger.info(f"Successfully processed report: {report_data['metadata']['title']}")
+        logger.info(f"Successfully processed report: {scrape_report['title']}")
         return jsonify(response)
         
     except Exception as e:
@@ -1341,134 +1585,4 @@ def process_report():
         logger.error(error_msg, exc_info=True)
         telegram_notifier.send_error_notification(error_msg)
         return jsonify({'error': error_msg}), 500
-
-@api.route('/test-scraper', methods=['POST'])
-def test_scraper():
-    """Test endpoint for scraping functionality"""
-    try:
-        data = request.get_json()
-        url = data.get('url')
-        login_credentials = data.get('login_credentials')
-        
-        if not url:
-            return jsonify({'error': 'URL is required'}), 400
-        
-        result = scrape_url(url, login_credentials)
-        
-        # Return limited content to avoid large responses
-        if result['success']:
-            result['text_content'] = result['text_content'][:500] + "..." if len(result['text_content']) > 500 else result['text_content']
-            result['html_content'] = "HTML content available (" + str(len(result['html_content'])) + " chars)"
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Test scraper error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@api.route('/test-ai', methods=['POST'])
-def test_ai():
-    """Test endpoint for AI processing"""
-    try:
-        data = request.get_json()
-        content = data.get('content')
-        
-        if not content:
-            return jsonify({'error': 'Content is required'}), 400
-        
-        result = ai_processor.translate_and_analyze(content)
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Test AI error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@api.route('/test-notion', methods=['POST'])
-def test_notion():
-    """Test endpoint for Notion integration"""
-    try:
-        # Create sample report data
-        sample_data = {
-            'metadata': {
-                'title': 'Test Market Report',
-                'word_count': 1500,
-                'quality_score': 85.0,
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            },
-            'analysis': {
-                'summary': 'This is a test market report summary for testing Notion integration.',
-                'key_insights': [
-                    'Test insight number one',
-                    'Test insight number two',
-                    'Test insight number three'
-                ],
-                'market_metrics': {
-                    'mentioned_stocks': ['AAPL', 'GOOGL', 'TSLA'],
-                    'sectors': ['Technology', 'Automotive'],
-                    'market_sentiment': 'positive'
-                },
-                'outlook': 'Positive outlook for testing purposes',
-                'risk_factors': ['Test risk factor'],
-                'action_items': ['Test this integration', 'Verify functionality']
-            }
-        }
-        
-        result = notion_client.create_report_page(sample_data, 'https://example.com/test')
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Test Notion error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@api.route('/test-telegram', methods=['POST'])
-def test_telegram():
-    """Test endpoint for Telegram notifications"""
-    try:
-        sample_data = {
-            'metadata': {
-                'title': 'Test Market Report',
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            },
-            'analysis': {
-                'summary': 'This is a test notification from the Market Report AI system.',
-                'key_insights': ['System is working correctly', 'Telegram integration active'],
-                'market_metrics': {
-                    'market_sentiment': 'positive'
-                }
-            }
-        }
-        
-        success = telegram_notifier.send_notification(sample_data, 'https://notion.so/test')
-        return jsonify({'success': success})
-        
-    except Exception as e:
-        logger.error(f"Test Telegram error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@api.route('/test-email', methods=['POST'])
-def test_email():
-    """Test endpoint for email notifications"""
-    try:
-        sample_data = {
-            'metadata': {
-                'title': 'Test Market Report',
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            },
-            'analysis': {
-                'summary': 'This is a test email from the Market Report AI system.',
-                'key_insights': ['Email system working correctly', 'Integration successful'],
-                'outlook': 'System operational',
-                'risk_factors': ['No risks detected in test'],
-                'action_items': ['Verify email receipt', 'Confirm formatting']
-            },
-            'content': {
-                'translated_content': 'This is the full translated content of the test report. It demonstrates how the email will look when a real report is processed.'
-            }
-        }
-        
-        success = email_notifier.send_report_email(sample_data, 'https://example.com/test')
-        return jsonify({'success': success})
-        
-    except Exception as e:
-        logger.error(f"Test email error: {e}")
-        return jsonify({'error': str(e)}), 500
+```

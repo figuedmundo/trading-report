@@ -153,43 +153,6 @@ def test_ai():
         logger.error(f"Test AI error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@api.route('/test-notion', methods=['POST'])
-def test_notion():
-    """Test endpoint for Notion integration"""
-    try:
-        # Create sample report data
-        sample_data = {
-            'metadata': {
-                'title': 'Test Market Report',
-                'word_count': 1500,
-                'quality_score': 85.0,
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            },
-            'analysis': {
-                'summary': 'This is a test market report summary for testing Notion integration.',
-                'key_insights': [
-                    'Test insight number one',
-                    'Test insight number two',
-                    'Test insight number three'
-                ],
-                'market_metrics': {
-                    'mentioned_stocks': ['AAPL', 'GOOGL', 'TSLA'],
-                    'sectors': ['Technology', 'Automotive'],
-                    'market_sentiment': 'positive'
-                },
-                'outlook': 'Positive outlook for testing purposes',
-                'risk_factors': ['Test risk factor'],
-                'action_items': ['Test this integration', 'Verify functionality']
-            }
-        }
-        
-        result = notion_client.create_report_page(sample_data, 'https://example.com/test')
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"Test Notion error: {e}")
-        return jsonify({'error': str(e)}), 500
-
 @api.route('/test-telegram', methods=['POST'])
 def test_telegram():
     """Test endpoint for Telegram notifications"""
@@ -197,7 +160,7 @@ def test_telegram():
         sample_data = {
             'metadata': {
                 'title': 'Test Market Report',
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             },
             'analysis': {
                 'summary': 'This is a test notification from the Market Report AI system.',
@@ -222,7 +185,7 @@ def test_email():
         sample_data = {
             'metadata': {
                 'title': 'Test Market Report',
-                'extraction_timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             },
             'analysis': {
                 'summary': 'This is a test email from the Market Report AI system.',

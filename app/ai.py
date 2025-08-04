@@ -1,7 +1,7 @@
 import json
 import logging
 from groq import Groq
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from .config import Config
 
 logger = logging.getLogger(__name__)
