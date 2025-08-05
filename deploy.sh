@@ -6,11 +6,11 @@ echo "🚀 Starting deployment of Market Report AI..."
 
 # Update system packages
 echo "📦 Installing system dependencies..."
-pip3 install --user -r requirements.txt
+pip3.13 install --user -r requirements.txt
 
 # Install Playwright browsers
 echo "🎭 Installing Playwright browsers..."
-python3 -m playwright install chromium
+python3.13 -m playwright install chromium
 
 # If you get permission issues, try:
 # python3 -m playwright install --with-deps chromium
