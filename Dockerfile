@@ -1,7 +1,28 @@
-# Use official Python slim image
+# ===== Stage 1: Builder =====
+FROM python:3.13-slim AS builder
+
+# Install build tools (for Python deps that need compiling)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3-dev \
+    curl \
+    gnupg \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a virtual environment
+WORKDIR /app
+RUN python -m venv /venv
+
+# Copy requirements and install Python deps
+COPY requirements.txt .
+RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
+
+
+# ===== Stage 2: Final =====
 FROM python:3.13-slim
 
-# Install dependencies for Playwright Chromium
+# Install system libs for Playwright Chromium
 RUN apt-get update && apt-get install -y \
     curl \
     gnupg \
@@ -32,24 +53,22 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install playwright CLI & browsers
+# Install Playwright and Chromium
 RUN npm install -g playwright \
     && playwright install chromium
+
+# Copy Python venv from builder
+COPY --from=builder /venv /venv
+ENV PATH="/venv/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
 
-# Copy only requirements first to leverage Docker cache
-COPY requirements.txt requirements.txt
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy rest of the code
+# Copy the rest of the application
 COPY . .
 
-# Expose port
+# Expose your app port
 EXPOSE 5000
 
-# Entrypoint
-CMD ["gunicorn", "app.wsgi:application", "--bind", "0.0.0.0:5000", "--workers", "2"]
+# Start app with Gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
