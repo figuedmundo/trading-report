@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 class GroqAIProcessor:
     def __init__(self):
         self.client = Groq(api_key=Config.GROQ_API_KEY)
-        self.model = Config.GROQ_MODEL
     
     def translate_and_analyze(self, content: str) -> Dict[str, Any]:
         """
@@ -20,7 +19,7 @@ class GroqAIProcessor:
             prompt = self._create_analysis_prompt(content[:8000]) # the Limit of 8000 is to do not over pass the tokens limit
 
             response = self.client.chat.completions.create(
-                model=self.model,
+                model="openai/gpt-oss-120b",
                 messages=[
                     {
                         "role": "system",
@@ -31,9 +30,10 @@ class GroqAIProcessor:
                         "content": prompt
                     }
                 ],
-                temperature=0.6,
-                max_completion_tokens=4096,
+                temperature=1,
+                max_completion_tokens=8192,
                 top_p=1,
+                reasoning_effort="high",
                 stream=False,
                 response_format={"type": "json_object"},
                 stop=None,
