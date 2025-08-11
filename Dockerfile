@@ -27,13 +27,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 
 COPY --from=builder /venv /venv
 ENV PATH="/venv/bin:$PATH"
+ENV PLAYWRIGHT_BROWSERS_PATH=0
 
 WORKDIR /app
-
 COPY . .
 
-# Now install Playwright browsers using the Python CLI from the venv
-RUN /venv/bin/playwright install chromium
+RUN playwright install chromium
 
 EXPOSE 8000
 
