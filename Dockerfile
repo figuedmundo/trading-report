@@ -1,5 +1,5 @@
 # ===== Stage 1: Builder =====
-FROM python:3.13-slim AS builder
+FROM python:3.12-slim AS builder
 
 # Install build tools (for Python deps that need compiling)
 RUN apt-get update && apt-get install -y \
@@ -20,7 +20,7 @@ RUN /venv/bin/pip install --no-cache-dir -r requirements.txt
 
 
 # ===== Stage 2: Final =====
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 # Install system libs for Playwright Chromium
 RUN apt-get update && apt-get install -y \
