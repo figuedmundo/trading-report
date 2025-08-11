@@ -53,10 +53,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright and Chromium
-RUN npm install -g playwright \
-    && playwright install chromium
-
 # Copy Python venv from builder
 COPY --from=builder /venv /venv
 ENV PATH="/venv/bin:$PATH"
@@ -66,6 +62,9 @@ WORKDIR /app
 
 # Copy the rest of the application
 COPY . .
+
+# Install Playwright browsers via Python CLI
+RUN playwright install chromium
 
 # Expose your app port
 EXPOSE 8000
