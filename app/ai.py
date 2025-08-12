@@ -17,7 +17,7 @@ class GroqAIProcessor:
 
         try:
             prompt = self._create_analysis_prompt(content[:8000]) # the Limit of 8000 is to do not over pass the tokens limit
-
+            
             response = self.client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[
@@ -37,18 +37,22 @@ class GroqAIProcessor:
                 stream=False,
                 response_format={"type": "json_object"},
                 stop=None,
+                # tools=[{"type":"browser_search"}]
             )
-            
-            result = json.loads(response.choices[0].message.content)
-            logger.info("Successfully processed content with Groq AI")
+            if not response.choices or not response.choices[0].message.content:
+                return self._fallback_analysis("")
+
+            try:
+                result = json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response: {e}")
+                return self._fallback_analysis(f"Failed to parse JSON from AI response: {e}")
+
             return result
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            return self._fallback_analysis(response.choices[0].message.content)
+
         except Exception as e:
             logger.error(f"Groq AI processing failed: {e}")
-            return self._fallback_analysis(response.choices[0].message.content)
+            return self._fallback_analysis(f"Processing failed: {e}")
     
     def _fallback_analysis(self, content: str) -> Dict[str, Any]:
         """Fallback analysis when AI processing fails"""
@@ -59,12 +63,12 @@ class GroqAIProcessor:
             "market_metrics": {
                 "mentioned_stocks": [],
                 "sectors": [],
-                "market_sentiment": "null"
+                "market_sentiment": "neutral"
             },
             "outlook": "Please review original report for outlook",
             "risk_factors": ["Manual review required"],
             "action_items": ["Review original report manually"],
-            "confidence_level": ["Not Available"]
+            "confidence_level": "Low"
         }
     
         
@@ -90,8 +94,8 @@ Response format (must be valid JSON):
         "Each insight should be actionable and specific"
     ],
     "market_metrics": {{
-        "mentioned_stocks": ["List of stocks/companies mentioned"],
-        "sectors": ["List of sectors discussed"],
+        "mentioned_stocks": ["List of stocks mentioned (one word per stock)"],
+        "sectors": ["List of sectors discussed (one word per sector)"],
         "market_sentiment": "positive/negative/neutral"
     }},
     "outlook": "Brief outlook or predictions mentioned",

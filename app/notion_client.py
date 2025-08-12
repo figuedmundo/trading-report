@@ -112,17 +112,19 @@ class NotionClient:
         
         # Add sectors and stocks as multi-select if available
         if metrics.get('sectors'):
+            sector_values = []
+            for sector in metrics['sectors'][:10]:
+                sector_values.extend(self._split_multi_select(sector))
             properties["Sectors"] = {
-                "multi_select": [
-                    {"name": sector[:100]} for sector in metrics['sectors'][:10]  # Limit to 10 items
-                ]
+                "multi_select": sector_values
             }
-        
+
         if metrics.get('mentioned_stocks'):
+            stock_values = []
+            for stock in metrics['mentioned_stocks'][:10]:
+                stock_values.extend(self._split_multi_select(stock))
             properties["Stocks"] = {
-                "multi_select": [
-                    {"name": stock[:100]} for stock in metrics['mentioned_stocks'][:10]
-                ]
+                "multi_select": stock_values
             }
         
         return properties
@@ -403,3 +405,12 @@ class NotionClient:
         except Exception as e:
             logger.error(f"Failed to update Notion page status: {e}")
             return False
+        
+    def _split_multi_select(self, value):
+        # Remove parentheses, split by comma, strip spaces
+        if "(" in value and ")" in value:
+            category, items = value.split("(", 1)
+            category = category.strip()
+            items = items.strip(")").split(",")
+            return [{"name": category}] + [{"name": item.strip()} for item in items]
+        return [{"name": value.strip()}]
