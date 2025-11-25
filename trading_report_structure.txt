@@ -1,0 +1,543 @@
+# Trading Report Automation System - Complete Architecture
+
+## Project Structure
+
+```
+trading-report-automation/
+├── docker-compose.yml
+├── .env.example
+├── .gitignore
+├── README.md
+├── docs/
+│   ├── SETUP.md
+│   ├── API.md
+│   └── DEPLOYMENT.md
+│
+├── services/
+│   ├── n8n/
+│   │   ├── workflows/
+│   │   │   ├── email-monitor.json
+│   │   │   ├── report-processor.json
+│   │   │   └── notification-sender.json
+│   │   ├── credentials/
+│   │   │   └── .gitkeep
+│   │   └── custom-nodes/
+│   │       └── .gitkeep
+│   │
+│   ├── playwright-scraper/
+│   │   ├── src/
+│   │   │   ├── app.py
+│   │   │   ├── config.py
+│   │   │   ├── scraper/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── browser.py
+│   │   │   │   ├── login_handler.py
+│   │   │   │   ├── report_extractor.py
+│   │   │   │   └── image_processor.py
+│   │   │   ├── models/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── request.py
+│   │   │   │   └── response.py
+│   │   │   └── utils/
+│   │   │       ├── __init__.py
+│   │   │       ├── logger.py
+│   │   │       └── validators.py
+│   │   ├── tests/
+│   │   │   ├── __init__.py
+│   │   │   ├── test_scraper.py
+│   │   │   └── fixtures/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── pyproject.toml
+│   │   └── README.md
+│   │
+│   ├── ai-analyzer/
+│   │   ├── src/
+│   │   │   ├── app.py
+│   │   │   ├── config.py
+│   │   │   ├── analyzers/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── groq_analyzer.py
+│   │   │   │   ├── anthropic_analyzer.py
+│   │   │   │   └── base_analyzer.py
+│   │   │   ├── prompts/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── market_analysis.py
+│   │   │   │   └── trade_summary.py
+│   │   │   ├── models/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── request.py
+│   │   │   │   └── response.py
+│   │   │   └── utils/
+│   │   │       ├── __init__.py
+│   │   │       └── formatters.py
+│   │   ├── tests/
+│   │   │   ├── __init__.py
+│   │   │   └── test_analyzers.py
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   ├── pyproject.toml
+│   │   └── README.md
+│   │
+│   └── notification-service/
+│       ├── src/
+│       │   ├── app.py
+│       │   ├── config.py
+│       │   ├── notifiers/
+│       │   │   ├── __init__.py
+│       │   │   ├── telegram.py
+│       │   │   ├── email.py
+│       │   │   └── base_notifier.py
+│       │   ├── templates/
+│       │   │   ├── email_html.jinja2
+│       │   │   ├── email_text.jinja2
+│       │   │   └── telegram.jinja2
+│       │   └── utils/
+│       │       ├── __init__.py
+│       │       └── template_renderer.py
+│       ├── tests/
+│       │   ├── __init__.py
+│       │   └── test_notifiers.py
+│       ├── Dockerfile
+│       ├── requirements.txt
+│       ├── pyproject.toml
+│       └── README.md
+│
+├── database/
+│   ├── migrations/
+│   │   ├── 001_initial_schema.sql
+│   │   ├── 002_add_indexes.sql
+│   │   └── 003_add_analytics_tables.sql
+│   ├── seeds/
+│   │   └── test_data.sql
+│   └── schemas/
+│       ├── reports.sql
+│       ├── analyses.sql
+│       └── notifications.sql
+│
+├── infrastructure/
+│   ├── nginx/
+│   │   ├── nginx.conf
+│   │   ├── sites-available/
+│   │   │   └── trading-hook.conf
+│   │   └── ssl/
+│   │       └── .gitkeep
+│   ├── traefik/
+│   │   ├── traefik.yml
+│   │   ├── dynamic/
+│   │   │   └── trading-hook.yml
+│   │   └── acme.json
+│   └── monitoring/
+│       ├── prometheus.yml
+│       └── grafana/
+│           └── dashboards/
+│               └── trading-reports.json
+│
+├── scripts/
+│   ├── setup.sh
+│   ├── backup.sh
+│   ├── restore.sh
+│   ├── deploy.sh
+│   └── test-email-webhook.sh
+│
+└── tests/
+    ├── integration/
+    │   ├── test_end_to_end.py
+    │   └── test_workflow.py
+    └── load/
+        └── test_concurrent_reports.py
+```
+
+---
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        INTERNET                                  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                    ┌────▼─────┐
+                    │  Email   │
+                    │ Provider │
+                    │ Webhook  │
+                    └────┬─────┘
+                         │
+            ┌────────────▼───────────────┐
+            │   Traefik / Nginx          │
+            │   (Reverse Proxy + SSL)    │
+            └────────────┬───────────────┘
+                         │
+        ┌────────────────┴────────────────┐
+        │                                  │
+    ┌───▼────────┐              ┌─────────▼──────┐
+    │    N8N     │              │  Playwright    │
+    │ Orchestr.  │◄─────────────┤   Scraper      │
+    │            │   HTTP       │   Service      │
+    └─────┬──────┘              └────────────────┘
+          │
+          │  ┌──────────────────────────────┐
+          ├──►  AI Analyzer Service         │
+          │  │  (Groq/Anthropic)            │
+          │  └──────────────────────────────┘
+          │
+          │  ┌──────────────────────────────┐
+          ├──►  Notification Service        │
+          │  │  (Telegram + Email)          │
+          │  └──────────────────────────────┘
+          │
+          │  ┌──────────────────────────────┐
+          └──►  PostgreSQL Database         │
+             │  (Reports + Analytics)       │
+             └──────────────────────────────┘
+```
+
+---
+
+## Technology Stack (Latest Versions - Nov 2025)
+
+### Core Services
+- **N8N**: `1.63.3` (Workflow Orchestration)
+- **PostgreSQL**: `16.1` (Database)
+- **Python**: `3.12` (Services)
+- **Node.js**: `22 LTS` (If using Node services)
+
+### Python Services Stack
+- **FastAPI**: `0.115.0` (API Framework)
+- **Playwright**: `1.48.0` (Browser Automation)
+- **Pydantic**: `2.9.2` (Data Validation)
+- **SQLAlchemy**: `2.0.35` (ORM)
+- **Alembic**: `1.13.3` (Migrations)
+- **httpx**: `0.27.2` (Async HTTP Client)
+- **python-telegram-bot**: `21.7` (Telegram)
+- **Jinja2**: `3.1.4` (Templating)
+- **structlog**: `24.4.0` (Logging)
+- **pytest**: `8.3.3` (Testing)
+- **ruff**: `0.7.0` (Linting/Formatting)
+
+### AI APIs
+- **anthropic**: `0.39.0` (Claude API)
+- **groq**: `0.11.0` (Groq API)
+
+### Infrastructure
+- **Traefik**: `3.1` or **Nginx**: `1.27` (Reverse Proxy)
+- **Docker**: `27.3.1` (Containerization)
+- **Docker Compose**: `2.29.7` (Orchestration)
+
+### Monitoring (Optional)
+- **Prometheus**: `2.54.1` (Metrics)
+- **Grafana**: `11.3.0` (Dashboards)
+- **Loki**: `3.2.0` (Logs)
+
+---
+
+## Service Communication Flow
+
+### 1. Email Arrives
+```
+Email Provider → Webhook → Traefik → N8N Webhook Node
+```
+
+### 2. Report Processing
+```
+N8N → Playwright Scraper → Returns {text, images, metadata}
+    → PostgreSQL (Store raw data)
+    → AI Analyzer → Returns {summary, analysis, trades}
+    → PostgreSQL (Store analysis)
+```
+
+### 3. Notification
+```
+N8N → Notification Service → [Telegram Bot API, SMTP Server]
+```
+
+---
+
+## Database Schema (PostgreSQL)
+
+### Core Tables
+```sql
+-- reports
+CREATE TABLE reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email_received_at TIMESTAMPTZ NOT NULL,
+    email_subject TEXT,
+    email_from TEXT,
+    report_url TEXT NOT NULL,
+    raw_content TEXT,
+    metadata JSONB,
+    status VARCHAR(50) DEFAULT 'pending',
+    error_message TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- images
+CREATE TABLE report_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id UUID REFERENCES reports(id) ON DELETE CASCADE,
+    image_url TEXT,
+    image_data BYTEA,
+    image_type VARCHAR(50),
+    sequence_order INT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- analyses
+CREATE TABLE analyses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    report_id UUID REFERENCES reports(id) ON DELETE CASCADE,
+    ai_provider VARCHAR(50) NOT NULL,
+    model_used VARCHAR(100),
+    summary TEXT NOT NULL,
+    key_trades JSONB,
+    market_analysis TEXT,
+    recommendations TEXT,
+    sentiment VARCHAR(50),
+    confidence_score DECIMAL(3,2),
+    tokens_used INT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- notifications
+CREATE TABLE notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    analysis_id UUID REFERENCES analyses(id) ON DELETE CASCADE,
+    channel VARCHAR(50) NOT NULL, -- 'telegram' or 'email'
+    status VARCHAR(50) DEFAULT 'pending',
+    sent_at TIMESTAMPTZ,
+    error_message TEXT,
+    retry_count INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes
+CREATE INDEX idx_reports_created_at ON reports(created_at DESC);
+CREATE INDEX idx_reports_status ON reports(status);
+CREATE INDEX idx_analyses_report_id ON analyses(report_id);
+CREATE INDEX idx_notifications_status ON notifications(status);
+```
+
+---
+
+## API Contracts
+
+### Playwright Scraper Service
+**Endpoint**: `POST /api/v1/scrape`
+
+**Request**:
+```json
+{
+  "url": "https://example.com/report/123",
+  "credentials": {
+    "username": "user@example.com",
+    "password": "secure_password"
+  },
+  "options": {
+    "timeout": 60000,
+    "extract_images": true,
+    "screenshot": true
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "text_content": "Full report text...",
+    "images": [
+      {
+        "url": "https://...",
+        "base64": "data:image/png;base64,...",
+        "type": "tradingview_chart"
+      }
+    ],
+    "metadata": {
+      "page_title": "Trading Report - Nov 2025",
+      "scraped_at": "2025-11-25T10:30:00Z",
+      "duration_ms": 5432
+    }
+  }
+}
+```
+
+### AI Analyzer Service
+**Endpoint**: `POST /api/v1/analyze`
+
+**Request**:
+```json
+{
+  "content": "Report text content...",
+  "images": ["base64_image_1", "base64_image_2"],
+  "provider": "anthropic",
+  "analysis_type": "comprehensive"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "analysis": {
+    "summary": "Market showed bullish momentum...",
+    "key_trades": [
+      {
+        "symbol": "EUR/USD",
+        "action": "BUY",
+        "entry": 1.0850,
+        "exit": 1.0920,
+        "result": "profit"
+      }
+    ],
+    "market_sentiment": "bullish",
+    "recommendations": "Consider long positions...",
+    "confidence": 0.85
+  },
+  "metadata": {
+    "model": "claude-sonnet-4-20250514",
+    "tokens": 1250
+  }
+}
+```
+
+---
+
+## Environment Variables
+
+### Global (.env)
+```bash
+# Database
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_DB=trading_reports
+POSTGRES_USER=trading_user
+POSTGRES_PASSWORD=secure_password
+
+# N8N
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=secure_n8n_password
+N8N_HOST=n8n.yourdomain.com
+N8N_PROTOCOL=https
+N8N_PORT=5678
+WEBHOOK_URL=https://trading-hook.yourdomain.com
+
+# Services URLs
+PLAYWRIGHT_SERVICE_URL=http://playwright-scraper:8000
+AI_ANALYZER_SERVICE_URL=http://ai-analyzer:8001
+NOTIFICATION_SERVICE_URL=http://notification-service:8002
+
+# AI Providers
+ANTHROPIC_API_KEY=sk-ant-...
+GROQ_API_KEY=gsk_...
+
+# Telegram
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+TELEGRAM_CHAT_ID=your_chat_id
+
+# Email (SMTP)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=app_specific_password
+SMTP_FROM=Trading Reports <your-email@gmail.com>
+
+# Trading Portal Credentials
+TRADING_PORTAL_USERNAME=your_username
+TRADING_PORTAL_PASSWORD=your_password
+
+# Security
+SECRET_KEY=your-secret-key-here
+API_KEY=your-internal-api-key
+
+# Monitoring (Optional)
+PROMETHEUS_ENABLED=true
+GRAFANA_ADMIN_PASSWORD=admin_password
+```
+
+---
+
+## Best Practices Implemented
+
+### 1. **Code Quality**
+- Type hints everywhere (Python 3.12+)
+- Pydantic models for validation
+- Ruff for linting and formatting
+- Pre-commit hooks
+- 100% test coverage goal
+
+### 2. **Security**
+- No secrets in code (env vars only)
+- API authentication on all services
+- Rate limiting on endpoints
+- Input validation and sanitization
+- Secure credential storage
+
+### 3. **Observability**
+- Structured logging (structlog)
+- Request tracing with correlation IDs
+- Metrics collection (Prometheus)
+- Health check endpoints
+- Error tracking and alerting
+
+### 4. **Resilience**
+- Retry logic with exponential backoff
+- Circuit breakers
+- Timeout configurations
+- Graceful degradation
+- Database connection pooling
+
+### 5. **Performance**
+- Async/await patterns
+- Connection pooling
+- Caching strategies
+- Background task processing
+- Resource limits in Docker
+
+### 6. **Development**
+- Hot reload in development
+- Docker Compose for local dev
+- Makefile for common commands
+- Comprehensive documentation
+- Integration and E2E tests
+
+---
+
+## Deployment Strategy
+
+### Development
+```bash
+docker-compose -f docker-compose.dev.yml up
+```
+
+### Staging
+```bash
+docker-compose -f docker-compose.staging.yml up -d
+```
+
+### Production
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+---
+
+## Monitoring & Alerts
+
+### Key Metrics to Track
+- Email processing time
+- Scraping success rate
+- AI analysis latency
+- Notification delivery rate
+- Error rates by service
+- Database query performance
+
+### Alert Conditions
+- Scraping failure > 2 consecutive
+- AI API errors > 5 in 10 minutes
+- Notification delivery failure
+- Database connection issues
+- Disk space < 20%
+- Memory usage > 80%

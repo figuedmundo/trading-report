@@ -1,0 +1,195 @@
+.PHONY: help setup dev prod down clean logs test lint format check-security backup restore
+
+# Default target
+help:
+	@echo "Trading Report Automation - Make Commands"
+	@echo ""
+	@echo "Setup Commands:"
+	@echo "  make setup          - Initial setup (create .env, install dependencies)"
+	@echo "  make install        - Install all service dependencies"
+	@echo ""
+	@echo "Development Commands:"
+	@echo "  make dev            - Start development environment"
+	@echo "  make dev-build      - Build and start development environment"
+	@echo "  make logs           - View logs from all services"
+	@echo "  make logs-service   - View logs from specific service (e.g., make logs-service SERVICE=n8n)"
+	@echo ""
+	@echo "Production Commands:"
+	@echo "  make prod           - Start production environment"
+	@echo "  make prod-build     - Build and start production environment"
+	@echo ""
+	@echo "Service Commands:"
+	@echo "  make down           - Stop all services"
+	@echo "  make restart        - Restart all services"
+	@echo "  make restart-service - Restart specific service (e.g., make restart-service SERVICE=n8n)"
+	@echo ""
+	@echo "Database Commands:"
+	@echo "  make db-migrate     - Run database migrations"
+	@echo "  make db-shell       - Open PostgreSQL shell"
+	@echo "  make db-backup      - Backup database"
+	@echo "  make db-restore     - Restore database from backup"
+	@echo ""
+	@echo "Testing Commands:"
+	@echo "  make test           - Run all tests"
+	@echo "  make test-unit      - Run unit tests only"
+	@echo "  make test-integration - Run integration tests only"
+	@echo "  make test-cov       - Run tests with coverage report"
+	@echo ""
+	@echo "Code Quality Commands:"
+	@echo "  make lint           - Run linting (ruff)"
+	@echo "  make format         - Format code (ruff)"
+	@echo "  make typecheck      - Run type checking (mypy)"
+	@echo "  make check          - Run all checks (lint + typecheck)"
+	@echo "  make fix            - Auto-fix linting issues"
+	@echo ""
+	@echo "Monitoring Commands:"
+	@echo "  make monitor        - Start monitoring stack (Prometheus + Grafana)"
+	@echo "  make health         - Check health of all services"
+	@echo ""
+	@echo "Utility Commands:"
+	@echo "  make clean          - Remove all containers, volumes, and cache"
+	@echo "  make clean-cache    - Clear service caches only"
+	@echo "  make shell          - Open shell in a service (e.g., make shell SERVICE=playwright-scraper)"
+
+# Setup commands
+setup:
+	@echo "Setting up project..."
+	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env file - please configure it!"; fi
+	@mkdir -p database/migrations database/seeds
+	@mkdir -p infrastructure/nginx/ssl
+	@mkdir -p services/n8n/workflows services/n8n/credentials
+	@echo "Setup complete! Configure .env and run 'make dev'"
+
+install:
+	@echo "Installing Python dependencies..."
+	@cd services/playwright-scraper && pip install -r requirements.txt
+	@cd services/ai-analyzer && pip install -r requirements.txt
+	@cd services/notification-service && pip install -r requirements.txt
+	@echo "Installing Playwright browsers..."
+	@cd services/playwright-scraper && playwright install chromium
+	@echo "Dependencies installed!"
+
+# Development
+dev:
+	docker-compose up
+
+dev-build:
+	docker-compose up --build
+
+# Production
+prod:
+	docker-compose -f docker-compose.prod.yml up -d
+
+prod-build:
+	docker-compose -f docker-compose.prod.yml up --build -d
+
+# Service management
+down:
+	docker-compose down
+
+restart:
+	docker-compose restart
+
+restart-service:
+	@docker-compose restart $(SERVICE)
+
+logs:
+	docker-compose logs -f
+
+logs-service:
+	@docker-compose logs -f $(SERVICE)
+
+# Database
+db-migrate:
+	@docker-compose exec postgres psql -U trading_user -d trading_reports -f /docker-entrypoint-initdb.d/001_initial_schema.sql
+
+db-shell:
+	@docker-compose exec postgres psql -U trading_user -d trading_reports
+
+db-backup:
+	@./scripts/backup.sh
+
+db-restore:
+	@./scripts/restore.sh
+
+# Testing
+test:
+	@cd services/playwright-scraper && pytest
+	@cd services/ai-analyzer && pytest
+	@cd services/notification-service && pytest
+
+test-unit:
+	@cd services/playwright-scraper && pytest tests/unit
+	@cd services/ai-analyzer && pytest tests/unit
+	@cd services/notification-service && pytest tests/unit
+
+test-integration:
+	@cd services/playwright-scraper && pytest tests/integration
+	@cd services/ai-analyzer && pytest tests/integration
+	@cd services/notification-service && pytest tests/integration
+
+test-cov:
+	@cd services/playwright-scraper && pytest --cov=src --cov-report=html
+	@cd services/ai-analyzer && pytest --cov=src --cov-report=html
+	@cd services/notification-service && pytest --cov=src --cov-report=html
+
+# Code quality
+lint:
+	@cd services/playwright-scraper && ruff check src
+	@cd services/ai-analyzer && ruff check src
+	@cd services/notification-service && ruff check src
+
+format:
+	@cd services/playwright-scraper && ruff format src
+	@cd services/ai-analyzer && ruff format src
+	@cd services/notification-service && ruff format src
+
+typecheck:
+	@cd services/playwright-scraper && mypy src
+	@cd services/ai-analyzer && mypy src
+	@cd services/notification-service && mypy src
+
+check: lint typecheck
+	@echo "All checks passed!"
+
+fix:
+	@cd services/playwright-scraper && ruff check --fix src
+	@cd services/ai-analyzer && ruff check --fix src
+	@cd services/notification-service && ruff check --fix src
+
+# Monitoring
+monitor:
+	docker-compose --profile monitoring up -d
+
+health:
+	@echo "Checking service health..."
+	@curl -sf http://localhost:8000/health || echo "❌ Playwright Scraper: DOWN"
+	@curl -sf http://localhost:8001/health || echo "❌ AI Analyzer: DOWN"
+	@curl -sf http://localhost:8002/health || echo "❌ Notification Service: DOWN"
+	@curl -sf http://localhost:5678 || echo "❌ N8N: DOWN"
+	@docker-compose exec -T postgres pg_isready -U trading_user || echo "❌ PostgreSQL: DOWN"
+
+# Utilities
+clean:
+	@echo "Cleaning up..."
+	docker-compose down -v
+	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	@echo "Cleanup complete!"
+
+clean-cache:
+	@docker-compose exec playwright-scraper rm -rf /app/cache/*
+	@docker-compose exec redis redis-cli FLUSHALL
+
+shell:
+	@docker-compose exec $(SERVICE) /bin/bash
+
+# Git hooks
+pre-commit:
+	@pre-commit run --all-files
+
+install-hooks:
+	@pre-commit install
+	@echo "Git hooks installed!"
