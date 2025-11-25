@@ -3,7 +3,7 @@
 ## Project Structure
 
 ```
-trading-report-automation/
+trading-report/
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore

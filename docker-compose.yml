@@ -1,58 +1,113 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  n8n:
-    image: n8nio/n8n:latest
-    restart: always
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_HOST=n8n.local
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - NODE_ENV=production
-      - WEBHOOK_URL=http://localhost:5678/
-      - GENERIC_TIMEZONE=Europe/Berlin
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=trading_reports
-      - DB_POSTGRESDB_USER=n8n
-      - DB_POSTGRESDB_PASSWORD=n8n_password
-    volumes:
-      - n8n_data:/home/node/.n8n
-    depends_on:
-      - postgres
-    networks:
-      - trading-net
-
   postgres:
-    image: postgres:15-alpine
-    restart: always
+    image: postgres:16.1-alpine
+    restart: unless-stopped
+    container_name: trading-postgres
     environment:
-      - POSTGRES_USER=n8n
-      - POSTGRES_PASSWORD=n8n_password
-      - POSTGRES_DB=trading_reports
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-trading_reports}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - trading-net
-
-  playwright-service:
-    build: ./playwright-service
-    restart: always
+      - ./postgres/init_database.py:/docker-entrypoint-initdb.d/00_init_database.py
+      - ./agent-os/specs/2025-11-25-postgresql-schema-data-persistence/planning/database_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     ports:
-      - "3000:3000"
-    environment:
-      - PORT=3000
+      - "${POSTGRES_PORT:-5432}:5432"
     networks:
-      - trading-net
+      - trading-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # N8N for workflow orchestration
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    container_name: trading-n8n
+    environment:
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=${N8N_PORT:-5678}
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - NODE_ENV=${NODE_ENV:-production}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=${POSTGRES_HOST:-postgres}
+      - DB_POSTGRESDB_PORT=${POSTGRES_PORT:-5432}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-trading_reports}
+      - DB_POSTGRESDB_USER=${N8N_DB_USER:-n8n_user}
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Placeholder for future services
+  # email-webhook:
+  #   build: ./services/email-webhook
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - trading-network
+  #
+  # scraper-service:
+  #   build: ./services/playwright-scraper
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - trading-network
+  #
+  # ai-analyzer:
+  #   build: ./services/ai-analyzer
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - trading-network
+  #
+  # notification-service:
+  #   build: ./services/notification-service
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   networks:
+  #     - trading-network
 
 networks:
-  trading-net:
+  trading-network:
     driver: bridge
 
 volumes:
-  n8n_data:
   postgres_data:
+    driver: local
+  n8n_data:
+    driver: local
