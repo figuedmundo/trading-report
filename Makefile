@@ -1,4 +1,4 @@
-.PHONY: help dev prod build clean logs db-init db-shell db-backup db-restore db-health test format lint
+.PHONY: help dev prod build clean logs db-init db-shell db-backup db-restore db-health test test-content-extraction format lint
 
 # Default target
 .DEFAULT_GOAL := help
@@ -39,6 +39,7 @@ help: ## Show this help message
 	@echo "  $(BLUE)test$(NC)                 Run all tests"
 	@echo "  $(BLUE)test-schema$(NC)          Run schema validation tests only"
 	@echo "  $(BLUE)test-data$(NC)            Run data flow integration tests only"
+	@echo "  $(BLUE)test-content-extraction$(NC)  Run content extraction tests"
 	@echo "  $(BLUE)format$(NC)               Format Python code (black)"
 	@echo "  $(BLUE)lint$(NC)                 Lint Python code (pylint, flake8)"
 	@echo "  $(BLUE)typecheck$(NC)            Type check Python code (mypy)"
@@ -154,6 +155,10 @@ test-data: ## Run data flow integration tests
 	@echo "$(GREEN)Running data flow tests...$(NC)"
 	python -m pytest postgres/tests/test_data_flow.py -v
 
+test-content-extraction: ## Run content extraction module tests
+	@echo "$(GREEN)Running content extraction tests...$(NC)"
+	cd services/playwright-scraper && python -m pytest tests/test_content_extraction_*.py tests/test_content_extractor.py tests/test_scraper_extraction_integration.py -v
+
 # Code quality targets
 format: ## Format Python code with black
 	@echo "$(BLUE)Formatting Python code...$(NC)"
@@ -197,5 +202,3 @@ setup: .env ## Setup project (copy .env, build images)
 	@echo "$(GREEN)Running setup...$(NC)"
 	$(MAKE) build
 	@echo "$(GREEN)Setup complete! Run 'make dev' to start services$(NC)"
-
-.PHONY: setup .env
