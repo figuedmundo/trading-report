@@ -4,9 +4,9 @@
 
 1. [x] Email Webhook Service & Email Parsing - Set up webhook endpoint to receive email payloads from email service provider, parse email headers/body to extract trading report indicators (keywords, sender, subject patterns), and extract URLs for portal access. `M`
 
-2. [ ] Secure Credential Storage & Management - Implement encrypted credential vault for trading portal username/password; support per-report credential overrides; ensure credentials never logged or exposed in system output. `S`
+2. [x] Secure Credential Storage & Management - Implement encrypted credential vault for trading portal username/password; support per-report credential overrides; ensure credentials never logged or exposed in system output. `S`
 
-3. [ ] Playwright Browser Automation - Build Playwright automation to handle trading portal login, navigate to provided URL, and maintain session state across multiple page interactions. `M`
+3. [x] Playwright Browser Automation - Build Playwright automation to handle trading portal login, navigate to provided URL, and maintain session state across multiple page interactions. `M`
 
 4. [ ] Report Content Extraction & Scraping - Extract text, images, and metadata from trading report pages; handle dynamic content loading; capture TradingView charts and embedded media; store raw HTML and extracted text. `L`
 

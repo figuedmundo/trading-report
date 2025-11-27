@@ -1,8 +1,8 @@
 from playwright.async_api import async_playwright
-import logging
 import base64
+from utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 async def scrape_report(url: str, username: str = None, password: str = None):
     async with async_playwright() as p:
@@ -11,7 +11,7 @@ async def scrape_report(url: str, username: str = None, password: str = None):
         page = await context.new_page()
         
         try:
-            logger.info(f"Navigating to {url}")
+            logger.info("Navigating to URL", url=url)
             await page.goto(url, timeout=60000)
             
             # Handle Login if credentials provided
@@ -19,7 +19,7 @@ async def scrape_report(url: str, username: str = None, password: str = None):
             if username and password:
                 # Check if we are on a login page (heuristic)
                 if await page.locator("input[type='email'], input[name='username']").count() > 0:
-                    logger.info("Attempting login...")
+                    logger.info("Attempting login", username=username)
                     await page.fill("input[type='email'], input[name='username']", username)
                     await page.fill("input[type='password']", password)
                     await page.click("button[type='submit'], input[type='submit']")

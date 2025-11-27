@@ -94,7 +94,7 @@ trading-report/
 │   ├── specs/                         # Implementation specs
 │   └── standards/                     # Code standards (backend, frontend, testing)
 ├── playwright-service/                # Reference Playwright scraper code
-├── postgres/                          # Database migrations & schemas
+├── database/                          # Database migrations & schemas
 ├── refs/                              # Reference files (configs, examples)
 ├── services/                          # [Will contain] Main microservices
 │   ├── email-webhook/                # Email event handler
@@ -229,7 +229,7 @@ Reference the `agent-os/standards/` directory for detailed guidelines:
 
 ### Database Changes
 
-1. Create migration file in `postgres/migrations/`:
+1. Create migration file in `database/migrations/`:
    ```sql
    -- migration_YYYY_MM_DD_description.sql
    BEGIN;

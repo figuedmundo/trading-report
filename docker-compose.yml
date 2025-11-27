@@ -12,8 +12,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init_database.py:/docker-entrypoint-initdb.d/00_init_database.py
-      - ./agent-os/specs/2025-11-25-postgresql-schema-data-persistence/planning/database_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/scripts:/docker-entrypoint-initdb.d
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     networks:
@@ -67,19 +66,41 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Playwright Scraper Service
+  playwright-scraper:
+    build: ./services/playwright-scraper
+    restart: unless-stopped
+    container_name: trading-playwright-scraper
+    environment:
+      TRADING_PORTAL_USERNAME: ${TRADING_PORTAL_USERNAME}
+      TRADING_PORTAL_PASSWORD: ${TRADING_PORTAL_PASSWORD}
+      SERVICE_PORT: 8001
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      PLAYWRIGHT_HEADLESS: "true"
+    ports:
+      - "8001:8001"
+    networks:
+      - trading-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Placeholder for future services
   # email-webhook:
   #   build: ./services/email-webhook
   #   ports:
   #     - "8000:8000"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - trading-network
-  #
-  # scraper-service:
-  #   build: ./services/playwright-scraper
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
