@@ -96,32 +96,79 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Placeholder for future services
-  # email-webhook:
-  #   build: ./services/email-webhook
-  #   ports:
-  #     - "8000:8000"
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - trading-network
-  #
-  # ai-analyzer:
-  #   build: ./services/ai-analyzer
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - trading-network
-  #
-  # notification-service:
-  #   build: ./services/notification-service
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   networks:
-  #     - trading-network
+  # AI Analysis Engine Service
+  ai-analyzer:
+    build: ./services/ai-analyzer
+    restart: unless-stopped
+    container_name: trading-ai-analyzer
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      SERVICE_PORT: 8002
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      ANALYSIS_TIMEOUT: 30
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+    ports:
+      - "8002:8002"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Unified Notification Service
+  notification-service:
+    build: ./services/notification-service
+    restart: unless-stopped
+    container_name: trading-notification
+    environment:
+      SERVICE_PORT: 8003
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      DATABASE_POOL_MIN: 2
+      DATABASE_POOL_MAX: 10
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SENDER_EMAIL: ${SENDER_EMAIL}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+    ports:
+      - "8003:8003"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   trading-network:

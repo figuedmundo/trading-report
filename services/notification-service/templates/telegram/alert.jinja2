@@ -1,0 +1,12 @@
+⚡ *Alert: {{ report_title }}*
+
+*{{ sentiment|title }}* ({{ (confidence_score * 100)|int }}%)
+
+{{ summary }}
+
+{% if trading_signals %}
+*Signals:*
+{% for signal in trading_signals[:3] %}
+• *{{ signal.action }}* `{{ signal.symbol }}`{% if signal.target_price %} → ${{ signal.target_price|round(2) }}{% endif %}
+{% endfor %}
+{% endif %}

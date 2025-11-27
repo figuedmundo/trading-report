@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+        .container { max-width: 700px; margin: 0 auto; padding: 20px; }
+        .section { margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 4px; }
+        .section h3 { margin-top: 0; color: #2c3e50; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th { background: #2c3e50; color: white; padding: 10px; text-align: left; }
+        td { padding: 8px; border-bottom: 1px solid #ddd; }
+        tr:hover { background: #f5f5f5; }
+        .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; font-size: 12px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Detailed Trading Analysis Report</h1>
+
+        <div class="section">
+            <h3>Report Summary</h3>
+            <p><strong>Title:</strong> {{ report_title }}</p>
+            <p><strong>Sentiment:</strong> {{ sentiment|title }}</p>
+            <p><strong>Confidence Score:</strong> {{ (confidence_score * 100)|int }}%</p>
+            {% if win_rate %}<p><strong>Win Rate:</strong> {{ win_rate|round(1) }}%</p>{% endif %}
+        </div>
+
+        <div class="section">
+            <h3>Analysis Summary</h3>
+            <p>{{ summary }}</p>
+        </div>
+
+        {% if trading_signals %}
+        <div class="section">
+            <h3>Trading Signals</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Symbol</th>
+                        <th>Entry</th>
+                        <th>Target</th>
+                        <th>Confidence</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for signal in trading_signals %}
+                    <tr>
+                        <td><strong>{{ signal.action }}</strong></td>
+                        <td>{{ signal.symbol }}</td>
+                        <td>{% if signal.entry_price %}${{ signal.entry_price|round(2) }}{% else %}-{% endif %}</td>
+                        <td>{% if signal.target_price %}${{ signal.target_price|round(2) }}{% else %}-{% endif %}</td>
+                        <td>{{ (signal.confidence_score * 100)|int }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        {% if market_insights %}
+        <div class="section">
+            <h3>Market Insights</h3>
+            <ul>
+            {% for insight in market_insights %}
+                <li>{{ insight }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if symbols_mentioned %}
+        <div class="section">
+            <h3>Symbols Mentioned</h3>
+            <p>{{ symbols_mentioned|join(', ') }}</p>
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p><strong>Generated:</strong> {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}</p>
+            <p><strong>Analysis Provider:</strong> {{ ai_provider|title }}</p>
+        </div>
+    </div>
+</body>
+</html>

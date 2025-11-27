@@ -1,0 +1,25 @@
+{# Shared template macros for notification templates #}
+
+{# Format signal with styling #}
+{% macro signal_row(signal) %}
+    <div class="signal {{ signal.action|lower }}">
+        <div class="action">{{ signal.action }} {{ signal.symbol }}</div>
+        <div class="details">
+            {% if signal.entry_price %}<strong>Entry:</strong> ${{ signal.entry_price|round(2) }}<br/>{% endif %}
+            {% if signal.target_price %}<strong>Target:</strong> ${{ signal.target_price|round(2) }}<br/>{% endif %}
+            <strong>Confidence:</strong> {{ (signal.confidence_score * 100)|int }}%
+        </div>
+    </div>
+{% endmacro %}
+
+{# Format metric badge #}
+{% macro metric(label, value) %}
+    <div class="metric">
+        <strong>{{ label }}:</strong> {{ value }}
+    </div>
+{% endmacro %}
+
+{# Format confidence score as percentage #}
+{% macro confidence_percent(score) %}
+    {{ (score * 100)|int }}%
+{% endmacro %}

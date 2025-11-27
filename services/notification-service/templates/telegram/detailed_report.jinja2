@@ -1,0 +1,33 @@
+📋 *{{ report_title }} - Detailed Report*
+
+*Sentiment:* {{ sentiment|title }} ({{ (confidence_score * 100)|int }}%)
+{% if win_rate %}*Win Rate:* {{ win_rate|round(1) }}%
+{% endif %}
+
+*Analysis:*
+{{ summary }}
+
+{% if trading_signals %}
+*All Trading Signals:*
+{% for signal in trading_signals %}
+• *{{ signal.action }}* `{{ signal.symbol }}`
+  {% if signal.entry_price %}Entry: ${{ signal.entry_price|round(2) }}{% endif %}
+  {% if signal.target_price %}Target: ${{ signal.target_price|round(2) }}{% endif %}
+  Confidence: {{ (signal.confidence_score * 100)|int }}%
+
+{% endfor %}
+{% endif %}
+
+{% if market_insights %}
+*Market Insights:*
+{% for insight in market_insights %}
+• {{ insight }}
+{% endfor %}
+{% endif %}
+
+{% if symbols_mentioned %}
+*Symbols Mentioned:* `{{ symbols_mentioned|join('`, `') }}`
+{% endif %}
+
+Generated: {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}
+{{ ai_provider|title }} Analysis

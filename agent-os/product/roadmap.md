@@ -12,11 +12,11 @@
 
 5. [x] PostgreSQL Schema & Data Persistence - Design and implement database schema for storing reports (raw content, extracted text, metadata, source info), report versions, processing status, and audit logs. `S`
 
-6. [ ] AI Report Analysis with Groq/Anthropic API - Integrate with chosen AI provider to analyze extracted report text; generate executive summaries (200-300 words); extract key trading signals, symbols, and recommendations. `M`
+6. [x] AI Report Analysis with Groq/Anthropic API - Integrate with chosen AI provider to analyze extracted report text; generate executive summaries (200-300 words); extract key trading signals, symbols, and recommendations. `M`
 
-7. [ ] Email Notification Service - Build email formatter and SMTP integration to send AI-analyzed report summaries via email; include original source link, timestamp, and confidence metrics. `S`
+7. [x] Email Notification Service - Build email formatter and SMTP integration to send AI-analyzed report summaries via email; include original source link, timestamp, and confidence metrics. `S` (Unified Notification Service)
 
-8. [ ] Telegram Notification Service - Implement Telegram bot integration to send formatted message summaries with quick links and trading signal highlights; handle emoji formatting for readability. `S`
+8. [x] Telegram Notification Service - Implement Telegram bot integration to send formatted message summaries with quick links and trading signal highlights; handle emoji formatting for readability. `S` (Unified Notification Service)
 
 9. [ ] Webhook Endpoint Security & Rate Limiting - Implement request signing/validation, IP whitelisting, rate limiting, and DDoS protection for the exposed webhook endpoint in homelab environment. `S`
 
