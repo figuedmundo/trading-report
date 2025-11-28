@@ -7,8 +7,9 @@ Automated monitoring, scraping, analysis, and notification system for trading re
 - **Automated Email Monitoring**: Webhook-based email monitoring for instant report processing
 - **Browser Automation**: Playwright-based scraping with login handling and dynamic content extraction
 - **AI Analysis**: Powered by Claude (Anthropic) or Groq for intelligent report summarization
-- **Multi-Channel Notifications**: Instant alerts via Telegram and Email
-- **Persistent Storage**: PostgreSQL database with full audit trail
+- **Unified Multi-Channel Notifications**: Extensible notification service with email (SMTP) and Telegram (Bot API)
+- **Reliable Delivery**: Exponential backoff retry, per-channel rate limiting, and complete audit trails
+- **Persistent Storage**: PostgreSQL database with full audit trail and append-only delivery logs
 - **Scalable Architecture**: Microservices design with Docker containers
 - **Visual Workflow**: N8N for easy workflow management and modification
 - **Monitoring**: Built-in health checks and optional Prometheus/Grafana stack
@@ -18,9 +19,15 @@ Automated monitoring, scraping, analysis, and notification system for trading re
 ```
 Email → Webhook → N8N → [Playwright Scraper] → PostgreSQL
                    ↓
-                [AI Analyzer] → Analysis Results
+                [AI Analyzer] → Analysis Results → PostgreSQL
                    ↓
-            [Notification Service] → Telegram + Email
+            [Unified Notification Service]
+                   ↓
+              ┌────┴────┐
+         Email (SMTP)  Telegram (Bot API)
+         (retry+rate)  (retry+rate)
+              └────┬────┘
+            Delivery Audit Log
 ```
 
 ### Services
@@ -28,10 +35,13 @@ Email → Webhook → N8N → [Playwright Scraper] → PostgreSQL
 1. **N8N** - Workflow orchestration and automation
 2. **Playwright Scraper** - Browser automation and web scraping
 3. **AI Analyzer** - Report analysis using Claude/Groq
-4. **Notification Service** - Multi-channel notification delivery
-5. **PostgreSQL** - Data persistence
-6. **Redis** - Caching and rate limiting
-7. **Traefik** - Reverse proxy with SSL
+4. **Unified Notification Service** - Multi-channel delivery with retry logic and rate limiting
+   - Email channel (SMTP with HTML templates)
+   - Telegram channel (Bot API with message splitting)
+   - Extensible for future channels (SMS, Slack, Discord)
+5. **PostgreSQL** - Data persistence with audit trails
+6. **Redis** - Caching and rate limiting (optional)
+7. **Traefik** - Reverse proxy with SSL (optional)
 
 ## 📋 Prerequisites
 
@@ -181,8 +191,8 @@ See `infrastructure/nginx/README.md` for Nginx setup instructions.
 | N8N | http://localhost:5678 | Workflow management |
 | Playwright API | http://localhost:8000 | Scraper service |
 | AI Analyzer API | http://localhost:8001 | Analysis service |
-| Notification API | http://localhost:8002 | Notification service |
-| Traefik Dashboard | http://localhost:8080 | Reverse proxy admin |
+| Notification API | http://localhost:8003 | Unified notification service |
+| Traefik Dashboard | http://localhost:8080 | Reverse proxy admin (optional) |
 | PostgreSQL | localhost:5432 | Database |
 
 ### Environment Variables
@@ -219,7 +229,15 @@ Each service has interactive API docs:
 
 - Playwright: http://localhost:8000/docs
 - AI Analyzer: http://localhost:8001/docs
-- Notifications: http://localhost:8002/docs
+- Notifications: http://localhost:8003/docs
+
+**Unified Notification Service Endpoints:**
+- `POST /api/v1/notify` - Send notification to one or more channels
+- `POST /api/v1/notify/batch` - Send batch notifications
+- `GET /api/v1/delivery-status/{id}` - Query delivery status
+- `GET /api/v1/delivery-stats` - Aggregate delivery statistics
+- `GET /api/v1/channels` - List enabled channels and status
+- `GET /health` - Service health check
 
 ## 🧪 Testing
 
@@ -388,11 +406,27 @@ curl -X POST http://localhost:8001/health
 # Check notification service
 make logs-service SERVICE=notification-service
 
+# Test notification service health
+curl http://localhost:8003/health
+
+# Check channel status
+curl http://localhost:8003/api/v1/channels
+
+# Query delivery status of a notification
+curl http://localhost:8003/api/v1/delivery-status/{notification_id}
+
+# View delivery statistics
+curl http://localhost:8003/api/v1/delivery-stats
+
 # Verify Telegram bot
 curl "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getMe"
 
-# Test SMTP
+# Test SMTP connectivity
 telnet ${SMTP_HOST} ${SMTP_PORT}
+
+# Check database for failed notifications
+make db-shell
+# Then run: SELECT * FROM notifications WHERE status = 'failed' ORDER BY created_at DESC LIMIT 10;
 ```
 
 ## 📁 Project Structure
@@ -431,14 +465,30 @@ This project is licensed under the MIT License.
 
 ## 🗺️ Roadmap
 
+### ✅ Completed (Phase 1 MVP)
+- [x] Email webhook service & email parsing
+- [x] Secure credential storage & management
+- [x] Playwright browser automation
+- [x] Report content extraction & scraping
+- [x] PostgreSQL schema & data persistence
+- [x] AI report analysis with Groq/Anthropic API
+- [x] **Unified notification service** (email + Telegram with retry & rate limiting)
+
+### 🚧 In Progress
+- [ ] Email notification delivery (integration with unified service)
+- [ ] Telegram notification delivery (integration with unified service)
+- [ ] Webhook endpoint security & rate limiting
+- [ ] Basic health monitoring & error logging
+
+### 📋 Planned (Future Phases)
 - [ ] Support for multiple trading portals
+- [ ] Additional notification channels (SMS, Slack, Discord)
 - [ ] Advanced pattern recognition in reports
 - [ ] Historical trend analysis
 - [ ] Mobile app for notifications
 - [ ] Multi-user support
 - [ ] Custom AI model training
 - [ ] Real-time dashboard
-- [ ] Slack integration
 
 ## ⚡ Performance Tips
 

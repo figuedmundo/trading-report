@@ -1,1 +1,1 @@
-"""Email Webhook Service tests package."""
+"""Test suite for email-webhook service."""

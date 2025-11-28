@@ -1,1 +1,1 @@
-"""Email Webhook Service package."""
+"""Email webhook service for receiving and validating webhook events."""

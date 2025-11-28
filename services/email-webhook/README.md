@@ -1,342 +1,228 @@
 # Email Webhook Service
 
-HTTP webhook endpoint for receiving trading report notifications from email service providers (Mailgun, SendGrid, etc.). This is the entry point to the trading report automation pipeline.
+Multi-layered security service for receiving and validating email webhook requests with signature validation, IP whitelisting, and rate limiting.
 
 ## Overview
 
-The Email Webhook Service:
-- Receives email payloads from external email service providers via secure HTTPS webhooks
-- Validates webhook requests using HMAC-SHA256 signatures and API key authentication
-- Extracts and parses email metadata (From, Subject, Message-ID, Date, etc.)
-- Detects trading reports using configurable keyword matching
-- Extracts URLs pointing to trading portals with domain/path filtering
-- Stores normalized email metadata in PostgreSQL for downstream processing
-- Provides comprehensive audit logging and error handling
+This service acts as the entry point for email notifications from providers like Mailgun and SendGrid. It implements multiple layers of security to protect against unauthorized access and DDoS attacks:
 
-## Architecture
+1. **IP Banning** - Rejects IPs with repeated failed authentication attempts
+2. **IP Whitelisting** - Only allows requests from configured email provider IP ranges
+3. **Rate Limiting** - Enforces per-IP and global request limits
+4. **Signature Validation** - Verifies request authenticity using cryptographic signatures
 
-```
-Email Provider (Mailgun/SendGrid)
-    ↓
-Webhook POST /webhook/email
-    ↓
-HMAC-SHA256 Signature Verification
-    ↓
-Email Parsing (headers, body, MIME)
-    ↓
-Keyword Detection (Trading Report)
-    ↓
-URL Extraction & Validation
-    ↓
-PostgreSQL reports table
-    ↓
-N8N Workflow Orchestration
-    ↓
-Downstream: Scraper, Analyzer, Notification Services
-```
+## Configuration
 
-## Setup & Configuration
-
-### Prerequisites
-
-- Python 3.11+
-- PostgreSQL 15+
-- pip for package management
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   cd services/email-webhook
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure environment:**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | | PostgreSQL connection string: `postgresql://user:password@host:5432/database` |
-| `WEBHOOK_SIGNATURE_SECRET` | Yes | | HMAC-SHA256 shared secret (base64 encoded) |
-| `API_KEY_FALLBACK` | No | | Optional API key for fallback authentication |
-| `REPORT_KEYWORDS` | No | trading report,analysis,recommendation,trade alert | Keywords for trading report detection (comma-separated) |
-| `TRUSTED_DOMAINS` | No | protradingskills.com | Trusted portal domains for URL filtering |
-| `RATE_LIMIT_PER_SECOND` | No | 1 | Per-sender rate limit (requests per second) |
-| `RATE_LIMIT_PER_HOUR` | No | 100 | Global rate limit (requests per hour) |
-| `LOG_LEVEL` | No | INFO | Logging verbosity (DEBUG, INFO, WARNING, ERROR) |
-
-### Generate Secret Key
+### Required Environment Variables
 
 ```bash
-# Generate HMAC-SHA256 secret
-openssl rand -base64 32
+# Security: Webhook signing secret
+WEBHOOK_SECRET_KEY=your-secret-key-must-be-at-least-32-characters-long
+
+# Database connection
+DATABASE_URL=postgresql://user:password@host:5432/trading_reports
+
+# Email provider IP ranges (CIDR notation)
+MAILGUN_IP_RANGES=149.72.0.0/16,161.38.0.0/16
+SENDGRID_IP_RANGES=168.245.0.0/16,167.89.0.0/16
 ```
 
-## API Documentation
+See `.env.example` for all available configuration options.
 
-### POST /webhook/email
+## API Endpoints
 
-Receive email payload from email service provider.
-
-**Request Headers:**
+### Health Check
 ```
-Content-Type: application/json
-X-Signature: <HMAC-SHA256 hex> (for Mailgun)
-X-API-Key: <api-key> (alternative authentication)
+GET /health
 ```
+Returns service health status. Exempt from all security middleware.
 
-**Request Body (Mailgun format):**
+Response:
 ```json
-{
-  "from": "sender@example.com",
-  "subject": "Trading Report - Nov 25",
-  "stripped-text": "Report content here...",
-  "timestamp": "Mon, 25 Nov 2025 10:00:00 +0000",
-  "message-id": "<msg-123@example.com>",
-  "to": "receive@example.com",
-  "cc": "cc@example.com"
-}
+{"status": "ok", "service": "email-webhook"}
 ```
 
-**Request Body (SendGrid format):**
+### Webhook Receiver
+```
+POST /webhook/email
+```
+Receives and processes email webhook events from configured providers.
+
+Protected by security middleware in order:
+1. IP ban check
+2. IP whitelist validation
+3. Rate limiting
+4. Signature validation
+
+Response (on success):
 ```json
-{
-  "from": "sender@example.com",
-  "subject": "Trading Report - Nov 25",
-  "text": "Report content here...",
-  "timestamp": "1732516800",
-  "message_id": "msg-123@example.com",
-  "to": "receive@example.com"
-}
+{"status": "received", "event_id": "uuid"}
 ```
 
-**Success Response (201 Created - New Report):**
-```json
-{
-  "success": true,
-  "status": "created",
-  "report_id": "123e4567-e89b-12d3-a456-426614174000",
-  "correlation_id": "456f7890-abcd-ef12-3456-789012345678",
-  "message": "Email processed successfully",
-  "timestamp": "2025-11-25T10:00:00Z"
-}
-```
+## Security Features
 
-**Success Response (202 Accepted - Duplicate/No URLs):**
-```json
-{
-  "success": true,
-  "status": "accepted",
-  "report_id": "123e4567-e89b-12d3-a456-426614174000",
-  "correlation_id": "456f7890-abcd-ef12-3456-789012345678",
-  "message": "Email processed successfully",
-  "timestamp": "2025-11-25T10:00:00Z"
-}
-```
+### IP Whitelisting
+- Static IP ranges loaded from environment variables at startup
+- Dynamic IP allowlist loaded from PostgreSQL with 5-minute cache refresh
+- Supports CIDR notation for both IPv4 ranges
+- Automatic soft-deletion of IPs without service restart
 
-**Error Response (401 Unauthorized):**
-```json
-{
-  "success": false,
-  "status": "rejected",
-  "error": "Signature verification failed",
-  "correlation_id": "456f7890-abcd-ef12-3456-789012345678",
-  "timestamp": "2025-11-25T10:00:00Z"
-}
-```
+### Rate Limiting
+- Per-IP minute limit: 5 requests/minute (default)
+- Per-IP hour limit: 50 requests/hour (default)
+- Global hour limit: 100 requests/hour (default)
+- Authenticated requests (valid signature) get 5x multiplier
+- In-memory storage with automatic TTL cleanup every 60 seconds
 
-**Status Codes:**
-- `201 Created`: New report successfully created and stored
-- `202 Accepted`: Valid email received (may be duplicate or no valid URLs)
-- `400 Bad Request`: Malformed JSON, missing required fields
-- `401 Unauthorized`: Signature/API key verification failed
-- `429 Too Many Requests`: Rate limit exceeded (see `Retry-After` header)
-- `500 Internal Server Error`: Database error or unexpected exception
+### IP Banning
+- Automatic banning after 10 failed authentication attempts (configurable)
+- 1-hour ban duration (configurable)
+- In-memory ban list synced to database every 5 minutes
+- Manual unbanning via database UPDATE
 
-### GET /health
+### Signature Validation
+- Mailgun: HMAC-SHA256(timestamp + token) with timestamp freshness check
+- SendGrid: ECDSA signature verification
+- Generic: HMAC-SHA256(body) fallback
+- Auto-detection of provider from request headers
+- Optional bypass via `SIGNATURE_VALIDATION_ENABLED=false` (testing only)
 
-Health check endpoint for service monitoring.
+## Database Schema
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-11-25T10:00:00Z",
-  "database": "connected"
-}
-```
+### ip_allowlist
+- `id` (UUID): Primary key
+- `ip_address` (VARCHAR 45 UNIQUE): IPv4 or IPv6 address
+- `description` (TEXT): Purpose of IP
+- `enabled` (BOOLEAN): Soft delete flag
+- `created_at`, `updated_at` (TIMESTAMPTZ): Timestamps with auto-update trigger
 
-**Status Codes:**
-- `200 OK`: Service healthy, database connected
-- `503 Service Unavailable`: Database unreachable
+### security_events
+- `id` (UUID): Primary key
+- `event_type` (VARCHAR 50): Event classification
+- `ip_address` (VARCHAR 45): Source IP
+- `endpoint` (VARCHAR 255): API endpoint
+- `request_headers` (JSONB): Filtered request headers (sensitive data removed)
+- `metadata` (JSONB): Event-specific metadata
+- `created_at` (TIMESTAMPTZ): Event timestamp
+
+Indexes:
+- `idx_security_events_ip` on ip_address
+- `idx_security_events_type` on event_type
+- `idx_security_events_created` on created_at DESC
+- `idx_security_events_type_created` on (event_type, created_at)
+
+### ip_bans
+- `id` (UUID): Primary key
+- `ip_address` (VARCHAR 45): Banned IP
+- `banned_until` (TIMESTAMPTZ): Ban expiry time
+- `reason` (TEXT): Ban reason
+- `attempt_count` (INTEGER): Failed attempts before ban
+- `created_at` (TIMESTAMPTZ): Ban timestamp
+
+Indexes:
+- `idx_ip_bans_ip` on ip_address
+- `idx_ip_bans_banned_until` on banned_until
 
 ## Testing
 
-### Run All Tests
-
+Run configuration tests only:
 ```bash
-pytest tests/ -v
+cd /path/to/services/email-webhook
+pytest tests/test_config.py -v
 ```
 
-### Run Specific Test File
-
+Run all tests:
 ```bash
-pytest tests/test_security.py -v
+pytest -v
 ```
 
-### Run with Coverage
-
-```bash
-pytest tests/ --cov=src --cov-report=html
-```
-
-### Test Organization
-
-- `test_infrastructure.py`: FastAPI initialization, health check
-- `test_database.py`: Database connectivity and pooling
-- `test_security.py`: HMAC-SHA256 signature verification, API key auth
-- `test_parsing.py`: Email header extraction, multipart MIME handling
-- `test_detection.py`: Keyword-based report detection
-- `test_extraction.py`: URL extraction and portal filtering
-- `test_storage.py`: Database report insertion, deduplication
-- `test_response_format.py`: Response schema validation
-- `test_rate_limiting.py`: Rate limit configuration
-- `test_error_handling.py`: Error logging
+Key test files:
+- `tests/test_config.py` - Configuration loading and validation
+- `tests/test_db_migrations.py` - Database schema and operations
+- `tests/test_ip_allowlist.py` - IP whitelisting and CIDR matching
+- `tests/test_rate_limiter.py` - Rate limit enforcement
+- `tests/test_signature_validation.py` - Signature verification
+- `tests/test_security_logging.py` - Security event logging
+- `tests/test_middleware.py` - Middleware stack ordering
+- `tests/test_integration.py` - End-to-end workflows
 
 ## Deployment
 
 ### Docker
 
-Build and run with Docker:
-
+Build:
 ```bash
-# Build image
 docker build -t email-webhook:latest .
-
-# Run container
-docker run -p 8001:8001 --env-file .env email-webhook:latest
 ```
 
-### Docker Compose
-
-Included in main `docker-compose.yml`:
-
+Run:
 ```bash
 docker-compose up email-webhook
 ```
 
-## Configuration for Email Providers
+### Configuration at Startup
 
-### Mailgun
-
-1. Go to Mailgun Dashboard → Webhooks
-2. Set webhook URL: `https://your-domain/webhook/email`
-3. Signature secret: Use `WEBHOOK_SIGNATURE_SECRET` from environment
-4. Select events: Message Delivery, Message Click, Message Open, etc.
-
-### SendGrid
-
-1. Go to SendGrid Dashboard → Settings → Event Webhook
-2. Set webhook URL: `https://your-domain/webhook/email`
-3. Use `X-API-Key` header if signature verification unavailable
-4. Select events: Delivered, Bounce, Click, Open, etc.
-
-## Troubleshooting
-
-### Connection Refused
-```
-Error: Failed to initialize connection pool: connection refused
-```
-**Solution:** Verify PostgreSQL is running and `DATABASE_URL` is correct.
-
-### Signature Verification Failed
-```
-{"success": false, "status": "rejected", "error": "Signature verification failed"}
-```
-**Solution:** Ensure `WEBHOOK_SIGNATURE_SECRET` matches the secret configured in your email provider.
-
-### Rate Limit Exceeded
-```
-{"success": false, "status": "rejected", "error": "Rate limit exceeded"}
-```
-**Solution:** Rate limits are per-sender (1 req/sec) and global (100 req/hour). Wait before retrying.
-
-### Database Error
-Check logs with:
-```bash
-docker-compose logs email-webhook
-```
-
-## Performance
-
-- Webhook processing: < 500ms per request
-- Database write: Optimized with connection pooling
-- Signature verification: Constant-time comparison
-- Keywords matching: Case-insensitive word boundary matching
-
-## Security
-
-- HMAC-SHA256 signature verification mandatory
-- Rate limiting prevents abuse (per-sender and global)
-- Parameterized queries prevent SQL injection
-- Generic error messages (no technical details exposed)
-- Full audit trail in system_logs table
-- Correlation IDs for request tracing
+The service validates all required configuration on startup and raises an error if:
+- `WEBHOOK_SECRET_KEY` is missing or less than 32 characters
+- `DATABASE_URL` is not configured
+- Rate limit values are not positive integers
 
 ## Monitoring
 
-Health check endpoint for orchestration:
-```bash
-curl http://localhost:8001/health
+### Logs
+
+All logs are structured JSON output to stdout (Docker-friendly):
+```json
+{
+  "timestamp": "2024-11-27T14:30:45Z",
+  "level": "ERROR",
+  "service": "email-webhook",
+  "message": "IP not whitelisted",
+  "ip_address": "203.0.113.42",
+  "event_type": "ip_not_whitelisted",
+  "endpoint": "/webhook/email"
+}
 ```
 
-Logs available in:
-- PostgreSQL `system_logs` table
-- Docker logs: `docker-compose logs email-webhook`
+### Metrics
 
-## Development
-
-### Code Structure
-
+HTTP response headers include rate limit metadata:
 ```
-src/
-├── main.py           # FastAPI app, webhook endpoint
-├── config.py         # Environment configuration
-├── models.py         # Pydantic request/response models
-├── security.py       # HMAC-SHA256 signature verification
-├── parsers.py        # Email header and body parsing
-├── detection.py      # Keyword-based report detection
-├── extractors.py     # URL extraction and validation
-├── storage.py        # Database report insertion
-├── database.py       # PostgreSQL connection pooling
-└── system_logging.py # Structured logging to system_logs
+X-RateLimit-Remaining: 4
+X-RateLimit-Reset: 1234567890
+Retry-After: 30
 ```
 
-### Standards Compliance
+## Troubleshooting
 
-All code follows project standards:
-- **Coding Style**: `agent-os/standards/global/coding-style.md`
-- **API Design**: `agent-os/standards/backend/api.md`
-- **Models**: `agent-os/standards/backend/models.md`
-- **Error Handling**: `agent-os/standards/global/error-handling.md`
-- **Validation**: `agent-os/standards/global/validation.md`
+### Service won't start
+- Check `WEBHOOK_SECRET_KEY` is set and at least 32 characters
+- Verify `DATABASE_URL` is correct and PostgreSQL is running
+- Check logs for specific validation errors
 
-## License
+### Legitimate requests being blocked
+- Verify IP is in `MAILGUN_IP_RANGES` or `SENDGRID_IP_RANGES`
+- Check rate limit hasn't been exceeded for the IP
+- Ensure signature is valid (if `SIGNATURE_VALIDATION_ENABLED=true`)
+- Look for IP in `security_events` table for diagnostics
 
-Trading Report Monitor - Automated Trading Report Ingestion System
+### High rate of failures
+- Check for attack patterns in `security_events` table
+- Review IPs in `ip_bans` table
+- Verify email provider IP ranges are current
 
-## Support
+## Performance Considerations
 
-For issues or questions, see:
-- Project: `/agent-os/specs/2025-11-25-email-webhook-service/`
-- Tech Stack: `/agent-os/product/tech-stack.md`
-- Architecture: `/CLAUDE.md`
+- Connection pool: 5-20 connections (configurable)
+- In-memory rate limit storage: ~1KB per active IP
+- Security event batch cleanup: Every 60 seconds
+- IP allowlist cache refresh: Every 5 minutes (configurable)
+- Old security events pruning: Once per day
+
+## Security Notes
+
+- Never commit `.env` file with actual secrets
+- Rotate `WEBHOOK_SECRET_KEY` regularly in production
+- Monitor `security_events` table for attack patterns
+- Keep PostgreSQL backups current for audit trail recovery
+- Review IP bans periodically for false positives

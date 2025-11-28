@@ -96,11 +96,11 @@ trading-report/
 ├── playwright-service/                # Reference Playwright scraper code
 ├── database/                          # Database migrations & schemas
 ├── refs/                              # Reference files (configs, examples)
-├── services/                          # [Will contain] Main microservices
-│   ├── email-webhook/                # Email event handler
+├── services/                          # Main microservices
+│   ├── email-webhook/                # Email event handler (planned)
 │   ├── playwright-scraper/            # Portal content extraction
 │   ├── ai-analyzer/                   # Report analysis & summarization
-│   └── notification-service/          # Email & Telegram delivery
+│   └── notification-service/          # Unified multi-channel delivery (email + telegram)
 ├── docker-compose.yml                 # Service orchestration
 ├── Makefile                           # Development commands
 ├── README.md                          # User-facing documentation
@@ -117,9 +117,10 @@ trading-report/
            │   └─> PostgreSQL (stores raw report)
            ├─> AI Analyzer Service (analyzes content)
            │   └─> PostgreSQL (stores analysis)
-           └─> Notification Service (sends alerts)
-               ├─> Email (SMTP)
-               └─> Telegram (Bot API)
+           └─> Unified Notification Service (multi-channel delivery)
+               ├─> Email Channel (SMTP with retry & rate limiting)
+               ├─> Telegram Channel (Bot API with message splitting)
+               └─> Audit Trail (notifications_delivery_log table)
 ```
 
 ### Key Technology Decisions

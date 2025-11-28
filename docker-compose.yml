@@ -66,6 +66,56 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Email Webhook Service - Security layer for webhook endpoint
+  email-webhook:
+    build: ./services/email-webhook
+    restart: unless-stopped
+    container_name: trading-email-webhook
+    environment:
+      SERVICE_PORT: 8001
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      WEBHOOK_SECRET_KEY: ${WEBHOOK_SECRET_KEY}
+      SIGNATURE_VALIDATION_ENABLED: ${SIGNATURE_VALIDATION_ENABLED:-true}
+      MAILGUN_IP_RANGES: ${MAILGUN_IP_RANGES:-149.72.0.0/16,161.38.0.0/16}
+      SENDGRID_IP_RANGES: ${SENDGRID_IP_RANGES:-168.245.0.0/16,167.89.0.0/16}
+      CUSTOM_ALLOWED_IPS: ${CUSTOM_ALLOWED_IPS:-}
+      IP_ALLOWLIST_CACHE_REFRESH_SECONDS: ${IP_ALLOWLIST_CACHE_REFRESH_SECONDS:-300}
+      RATE_LIMIT_PER_IP_MINUTE: ${RATE_LIMIT_PER_IP_MINUTE:-5}
+      RATE_LIMIT_PER_IP_HOUR: ${RATE_LIMIT_PER_IP_HOUR:-50}
+      RATE_LIMIT_GLOBAL_HOUR: ${RATE_LIMIT_GLOBAL_HOUR:-100}
+      RATE_LIMIT_BAN_THRESHOLD: ${RATE_LIMIT_BAN_THRESHOLD:-10}
+      RATE_LIMIT_BAN_DURATION_HOURS: ${RATE_LIMIT_BAN_DURATION_HOURS:-1}
+      RATE_LIMIT_AUTHENTICATED_MULTIPLIER: ${RATE_LIMIT_AUTHENTICATED_MULTIPLIER:-5}
+      SECURITY_ALERT_THRESHOLD: ${SECURITY_ALERT_THRESHOLD:-50}
+      SECURITY_ALERT_TELEGRAM: ${SECURITY_ALERT_TELEGRAM:-true}
+      SECURITY_ALERT_DEBOUNCE_MINUTES: ${SECURITY_ALERT_DEBOUNCE_MINUTES:-10}
+      WEBHOOK_SECURITY_ENABLED: ${WEBHOOK_SECURITY_ENABLED:-true}
+      SECURITY_EVENT_RETENTION_DAYS: ${SECURITY_EVENT_RETENTION_DAYS:-90}
+    ports:
+      - "8001:8001"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./services/email-webhook/src:/app/src:cached
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # Playwright Scraper Service
   playwright-scraper:
     build: ./services/playwright-scraper
@@ -74,15 +124,15 @@ services:
     environment:
       TRADING_PORTAL_USERNAME: ${TRADING_PORTAL_USERNAME}
       TRADING_PORTAL_PASSWORD: ${TRADING_PORTAL_PASSWORD}
-      SERVICE_PORT: 8001
+      SERVICE_PORT: 8002
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PLAYWRIGHT_HEADLESS: "true"
     ports:
-      - "8001:8001"
+      - "8002:8002"
     networks:
       - trading-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -104,19 +154,19 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      SERVICE_PORT: 8002
+      SERVICE_PORT: 8003
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ANALYSIS_TIMEOUT: 30
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
     ports:
-      - "8002:8002"
+      - "8003:8003"
     networks:
       - trading-network
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -136,7 +186,7 @@ services:
     restart: unless-stopped
     container_name: trading-notification
     environment:
-      SERVICE_PORT: 8003
+      SERVICE_PORT: 8004
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
       DATABASE_POOL_MIN: 2
@@ -149,14 +199,14 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
     ports:
-      - "8003:8003"
+      - "8004:8004"
     networks:
       - trading-network
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
       timeout: 10s
       retries: 3

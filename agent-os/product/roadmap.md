@@ -22,3 +22,4 @@
 
 10. [ ] Basic Health Monitoring & Error Logging - Add system health checks, error tracking, notification delivery confirmation, and basic alerting for failures (failed logins, extraction errors, API timeouts). `S`
 
+11. [] Users Manual - Complete users manual about how to configure, how to use the system, how to troubleshoot, etc. `S`
