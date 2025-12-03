@@ -1,27 +1,14 @@
-# Multi-stage build for Email Webhook Service
-
-FROM python:3.11-slim as builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Final stage
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
-
-# Set PATH to use local Python packages
-ENV PATH=/root/.local/bin:$PATH
-ENV PYTHONPATH=/app:$PYTHONPATH
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/
+ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app

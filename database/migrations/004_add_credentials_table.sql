@@ -42,7 +42,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger on credentials table
-CREATE TRIGGER IF NOT EXISTS update_credentials_updated_at
+DROP TRIGGER IF EXISTS update_credentials_updated_at ON credentials;
+CREATE TRIGGER update_credentials_updated_at
     BEFORE UPDATE ON credentials
     FOR EACH ROW
     EXECUTE FUNCTION update_credentials_updated_at();

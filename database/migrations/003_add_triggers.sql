@@ -13,13 +13,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger for reports table
-CREATE TRIGGER IF NOT EXISTS update_reports_updated_at
+DROP TRIGGER IF EXISTS update_reports_updated_at ON reports;
+CREATE TRIGGER update_reports_updated_at
     BEFORE UPDATE ON reports
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
 -- Trigger for notifications table
-CREATE TRIGGER IF NOT EXISTS update_notifications_updated_at
+DROP TRIGGER IF EXISTS update_notifications_updated_at ON notifications;
+CREATE TRIGGER update_notifications_updated_at
     BEFORE UPDATE ON notifications
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
@@ -36,7 +38,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger for automatic processed_at
-CREATE TRIGGER IF NOT EXISTS set_report_processed_at
+DROP TRIGGER IF EXISTS set_report_processed_at ON reports;
+CREATE TRIGGER set_report_processed_at
     BEFORE UPDATE ON reports
     FOR EACH ROW
     EXECUTE FUNCTION set_processed_at();

@@ -87,7 +87,7 @@ db-init: ## Initialize database and apply schema
 		echo "Please copy .env.example to .env and configure database credentials"; \
 		exit 1; \
 	fi
-	docker-compose exec -T postgres python3 /docker-entrypoint-initdb.d/00_init_database.py
+	docker-compose exec -T postgres python3 /docker-entrypoint-initdb.d/run_migrations.py
 
 db-shell: ## Open PostgreSQL shell as trading_user
 	@if [ ! -f .env ]; then \

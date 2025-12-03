@@ -87,7 +87,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize security logger
     try:
-        security_events_repo = SecurityEventsRepository(db_pool)
+        security_events_repo = SecurityEventsRepository()
         security_logger = SecurityLogger(security_events_repo)
         logger.info("Security logger initialized")
     except Exception as e:

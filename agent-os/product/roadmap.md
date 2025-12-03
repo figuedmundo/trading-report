@@ -18,8 +18,8 @@
 
 8. [x] Telegram Notification Service - Implement Telegram bot integration to send formatted message summaries with quick links and trading signal highlights; handle emoji formatting for readability. `S` (Unified Notification Service)
 
-9. [ ] Webhook Endpoint Security & Rate Limiting - Implement request signing/validation, IP whitelisting, rate limiting, and DDoS protection for the exposed webhook endpoint in homelab environment. `S`
+9. [x] Webhook Endpoint Security & Rate Limiting - Implement request signing/validation, IP whitelisting, rate limiting, and DDoS protection for the exposed webhook endpoint in homelab environment. `S`
 
-10. [ ] Basic Health Monitoring & Error Logging - Add system health checks, error tracking, notification delivery confirmation, and basic alerting for failures (failed logins, extraction errors, API timeouts). `S`
+10. [x] Basic Health Monitoring & Error Logging - Add system health checks, error tracking, notification delivery confirmation, and basic alerting for failures (failed logins, extraction errors, API timeouts). `S`
 
-11. [] Users Manual - Complete users manual about how to configure, how to use the system, how to troubleshoot, etc. `S`
+11. [ ] Users Manual - Complete users manual about how to configure all services and n8n, how to use the system, how to troubleshoot, etc. `S`

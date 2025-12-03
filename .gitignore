@@ -58,3 +58,4 @@ test-results/
 /ms-playwright/
 
 .claude
+.gemini

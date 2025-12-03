@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - N8N manages workflow orchestration and webhook triggers
 - Docker Compose for local deployment
 - PostgreSQL for persistent storage with audit trails
+- Health Monitoring service for operational visibility
 
 ## Quick Start Commands
 
@@ -41,6 +42,10 @@ make test
 # Run tests for a specific service
 cd services/playwright-scraper && pytest
 
+# Run health monitoring tests
+cd services/health-monitoring && pytest tests/test_n8n_integration.py -v
+cd services/health-monitoring && pytest tests/test_integration.py -v
+
 # Code formatting
 make format
 
@@ -61,10 +66,26 @@ make db-backup
 
 # View service logs (all or specific)
 make logs
+make logs-service SERVICE=health-monitoring
 make logs-service SERVICE=playwright-scraper
 
 # Check service health
 make health
+```
+
+### Health Monitoring
+```bash
+# Check health of all services
+curl http://localhost:8003/api/v1/health/status
+
+# Get recent CRITICAL errors
+curl 'http://localhost:8003/api/v1/health/errors?severity=CRITICAL&hours=24'
+
+# Trigger manual health check for specific service
+curl -X POST http://localhost:8003/api/v1/health/check/ai-analyzer
+
+# View health monitoring logs
+make logs-service SERVICE=health-monitoring
 ```
 
 ### Common Workflows
@@ -97,13 +118,15 @@ trading-report/
 ├── database/                          # Database migrations & schemas
 ├── refs/                              # Reference files (configs, examples)
 ├── services/                          # Main microservices
-│   ├── email-webhook/                # Email event handler (planned)
+│   ├── email-webhook/                # Email event handler
 │   ├── playwright-scraper/            # Portal content extraction
 │   ├── ai-analyzer/                   # Report analysis & summarization
-│   └── notification-service/          # Unified multi-channel delivery (email + telegram)
+│   ├── notification-service/          # Unified multi-channel delivery (email + telegram)
+│   └── health-monitoring/             # Health checks, error logging, alerts
 ├── docker-compose.yml                 # Service orchestration
 ├── Makefile                           # Development commands
 ├── README.md                          # User-facing documentation
+├── HEALTH_MONITORING.md               # Health monitoring operator manual
 └── .env.example                       # Environment variables template
 ```
 
@@ -121,6 +144,19 @@ trading-report/
                ├─> Email Channel (SMTP with retry & rate limiting)
                ├─> Telegram Channel (Bot API with message splitting)
                └─> Audit Trail (notifications_delivery_log table)
+
+2. Health Monitoring (Continuous)
+   └─> Health Monitoring Service (Port 8003)
+       ├─> Health Check Loop (every 60 seconds)
+       │   ├─> Checks all 5 services
+       │   └─> Stores health_checks in PostgreSQL
+       ├─> Alert Generation (every 60 seconds)
+       │   ├─> Queries error_logs for CRITICAL errors
+       │   ├─> Applies batching algorithm
+       │   └─> Sends alerts via Notification Service
+       └─> Data Cleanup (daily at midnight)
+           ├─> Deletes error_logs older than 30 days
+           └─> Deletes health_checks older than 7 days
 ```
 
 ### Key Technology Decisions
@@ -323,6 +359,72 @@ def test_analyzer_handles_api_failure(mock_analyze):
     # Test fallback behavior
 ```
 
+## Health Monitoring Setup
+
+### Configuration
+
+The health-monitoring service is pre-configured in docker-compose.yml. To enable critical alerts:
+
+1. **Set ALERT_EMAIL_ADMIN in .env**:
+   ```bash
+   ALERT_EMAIL_ADMIN=your-admin@example.com
+   ```
+
+2. **Configure SMTP for alert delivery** (via notification service):
+   ```bash
+   SMTP_HOST=smtp.gmail.com
+   SMTP_USER=your-email@gmail.com
+   SMTP_PASSWORD=your-app-password
+   ```
+
+3. **Adjust alert batching if needed** (optional):
+   ```bash
+   ALERT_BATCH_WINDOW=60        # Minutes to batch consecutive failures
+   ALERT_AUTO_RESOLVE_WINDOW=5  # Minutes before error resolves
+   ```
+
+### Health Check Intervals
+
+Services are checked every 60 seconds by default:
+```bash
+HEALTH_CHECK_INTERVAL=60        # Seconds between health checks
+HEALTH_CHECK_TIMEOUT=5          # Max seconds to wait for service response
+```
+
+### Data Retention
+
+Configure how long to keep historical data:
+```bash
+ERROR_LOG_RETENTION_DAYS=30      # Keep errors for 30 days
+HEALTH_CHECK_RETENTION_DAYS=7    # Keep health checks for 7 days
+```
+
+### Running Health Monitoring Tests
+
+```bash
+# Test N8N integration (Phase 9)
+cd services/health-monitoring && pytest tests/test_n8n_integration.py -v
+
+# Test integration scenarios (Phase 10)
+cd services/health-monitoring && pytest tests/test_integration.py -v
+
+# Run all health monitoring tests
+cd services/health-monitoring && pytest -v
+```
+
+### Viewing Health Status
+
+```bash
+# Get aggregate health of all services
+curl http://localhost:8003/api/v1/health/status
+
+# Get recent CRITICAL errors
+curl 'http://localhost:8003/api/v1/health/errors?severity=CRITICAL&hours=24'
+
+# Trigger manual health check
+curl -X POST http://localhost:8003/api/v1/health/check/ai-analyzer
+```
+
 ## Performance & Monitoring
 
 ### Key Metrics to Track
@@ -331,6 +433,8 @@ def test_analyzer_handles_api_failure(mock_analyze):
 - Notification delivery time (target: < 2 minutes)
 - Service uptime (target: 99.5%)
 - Database query performance (watch slow queries)
+- Health check response time (target: < 2 seconds)
+- Alert generation latency (target: < 5 minutes)
 
 ### Optimization Tips
 1. Use Redis caching for frequently-accessed reports (Phase 3+)
@@ -338,6 +442,7 @@ def test_analyzer_handles_api_failure(mock_analyze):
 3. Index database fields used in WHERE clauses
 4. Use connection pooling for database
 5. Monitor Docker resource limits
+6. Verify health check indexes exist (service_name, created_at)
 
 ### Debugging
 ```bash
@@ -347,12 +452,20 @@ docker-compose logs -f --timestamps [service]
 # Check service health endpoints
 curl http://localhost:8000/health
 curl http://localhost:8001/health
+curl http://localhost:8002/health
+curl http://localhost:8003/health
 
 # Inspect database queries (enable query logging)
 POSTGRES_QUERY_LOG=true make dev
 
 # Test N8N workflows in UI
 http://localhost:5678/workflows
+
+# Check health monitoring database tables
+make db-shell
+SELECT COUNT(*) FROM health_checks;
+SELECT COUNT(*) FROM error_logs;
+SELECT * FROM alert_state WHERE consecutive_failure_count > 0;
 ```
 
 ## Deployment & Operations
@@ -386,6 +499,13 @@ DATABASE_URL=postgresql://user:password@postgres:5432/trading_reports
 
 # Webhook
 WEBHOOK_URL=https://trading-hook.yourdomain.com
+
+# Health Monitoring
+ALERT_EMAIL_ADMIN=admin@example.com
+HEALTH_CHECK_INTERVAL=60
+HEALTH_CHECK_TIMEOUT=5
+ALERT_BATCH_WINDOW=60
+ERROR_LOG_RETENTION_DAYS=30
 ```
 
 ### Backups & Recovery
@@ -407,6 +527,7 @@ For detailed information, consult:
 - **Roadmap & Features**: `agent-os/product/roadmap.md`
 - **Technical Details**: `agent-os/product/tech-stack.md`
 - **Database Schema**: `agent-os/specs/2025-11-25-postgresql-schema-data-persistence/spec.md`
+- **Health Monitoring**: `HEALTH_MONITORING.md` (complete operator manual)
 - **Implementation Tasks**: See `planning/` directory for spec verification
 
 ## Common Issues & Solutions
@@ -434,6 +555,13 @@ For detailed information, consult:
 - Confirm chat ID is correct
 - Check network connectivity from container
 
+### Health Monitoring Not Working
+- Check health-monitoring service is running: `docker-compose ps | grep health-monitoring`
+- Verify database connectivity: `make db-shell` → `SELECT COUNT(*) FROM health_checks;`
+- Check service logs: `make logs-service SERVICE=health-monitoring`
+- Verify ALERT_EMAIL_ADMIN is configured: `grep ALERT_EMAIL_ADMIN .env`
+- Test health endpoint: `curl http://localhost:8003/api/v1/health/status`
+
 ## When to Use Agents (Claude Code Task Tool)
 
 Use `Task` tool with specialized agents for:
@@ -446,5 +574,6 @@ Example: `Task(subagent_type='Explore', prompt='Find all webhook handlers in the
 
 ---
 
-**Last Updated**: November 25, 2025
+**Last Updated**: December 3, 2025
 **Key Contributors**: Project initiated as trading report automation system
+**Latest Addition**: Health Monitoring & Error Logging (Phases 1-11 complete)

@@ -12,7 +12,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY services/notification-service ./
+COPY src ./src
+COPY templates ./templates
 
 # Create non-root user
 RUN useradd -m -u 1000 notif && chown -R notif:notif /app

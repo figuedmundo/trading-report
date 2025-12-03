@@ -1,8 +1,6 @@
-version: "3.8"
-
 services:
   postgres:
-    image: postgres:16.1-alpine
+    build: ./database
     restart: unless-stopped
     container_name: trading-postgres
     environment:
@@ -10,9 +8,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-trading_reports}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      N8N_DB_USER: ${N8N_DB_USER:-n8n_user}
+      N8N_DB_PASSWORD: ${N8N_DB_PASSWORD}
+      TRADING_USER_PASSWORD: ${TRADING_USER_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/scripts:/docker-entrypoint-initdb.d
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     networks:
@@ -74,7 +74,7 @@ services:
     environment:
       SERVICE_PORT: 8001
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
       WEBHOOK_SECRET_KEY: ${WEBHOOK_SECRET_KEY}
       SIGNATURE_VALIDATION_ENABLED: ${SIGNATURE_VALIDATION_ENABLED:-true}
       MAILGUN_IP_RANGES: ${MAILGUN_IP_RANGES:-149.72.0.0/16,161.38.0.0/16}
@@ -154,10 +154,54 @@ services:
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
-      SERVICE_PORT: 8003
+      SERVICE_PORT: 8000
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ANALYSIS_TIMEOUT: 30
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+    ports:
+      - "8000:8000"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Health Monitoring Service
+  health-monitoring:
+    build: ./services/health-monitoring
+    restart: unless-stopped
+    container_name: trading-health-monitoring
+    environment:
+      SERVICE_PORT: 8003
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      HEALTH_CHECK_INTERVAL: 60
+      HEALTH_CHECK_TIMEOUT: 5
+      ALERT_EMAIL_ADMIN: ${ALERT_EMAIL_ADMIN:-admin@example.com}
+      ALERT_BATCH_WINDOW: 60
+      ALERT_AUTO_RESOLVE_WINDOW: 5
+      ERROR_LOG_RETENTION_DAYS: 30
+      HEALTH_CHECK_RETENTION_DAYS: 7
+      ENABLE_HEALTH_MONITORING: "true"
+      EMAIL_WEBHOOK_URL: http://email-webhook:8001
+      PLAYWRIGHT_SCRAPER_URL: http://playwright-scraper:8002
+      AI_ANALYZER_URL: http://ai-analyzer:8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:8001
+      N8N_URL: http://n8n:5678
     ports:
       - "8003:8003"
     networks:
@@ -170,10 +214,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    volumes:
+      - ./services/health-monitoring/src:/app/src:cached
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -188,7 +234,7 @@ services:
     environment:
       SERVICE_PORT: 8004
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
       DATABASE_POOL_MIN: 2
       DATABASE_POOL_MAX: 10
       SMTP_HOST: ${SMTP_HOST}
