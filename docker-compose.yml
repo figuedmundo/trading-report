@@ -200,7 +200,7 @@ services:
       EMAIL_WEBHOOK_URL: http://email-webhook:8001
       PLAYWRIGHT_SCRAPER_URL: http://playwright-scraper:8002
       AI_ANALYZER_URL: http://ai-analyzer:8000
-      NOTIFICATION_SERVICE_URL: http://notification-service:8001
+      NOTIFICATION_SERVICE_URL: http://notification-service:8004
       N8N_URL: http://n8n:5678
     ports:
       - "8003:8003"

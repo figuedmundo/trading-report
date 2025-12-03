@@ -35,7 +35,7 @@ class Config:
     alert_email_admin: Optional[str] = os.getenv("ALERT_EMAIL_ADMIN", "admin@example.com")
     alert_batch_window: int = int(os.getenv("ALERT_BATCH_WINDOW", "60"))  # minutes
     alert_auto_resolve_window: int = int(os.getenv("ALERT_AUTO_RESOLVE_WINDOW", "5"))  # minutes
-    notification_service_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8001")
+    notification_service_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8004")
 
     # Error Log Retention
     error_log_retention_days: int = int(os.getenv("ERROR_LOG_RETENTION_DAYS", "30"))
@@ -45,7 +45,7 @@ class Config:
     email_webhook_url: str = os.getenv("EMAIL_WEBHOOK_URL", "http://email-webhook:8001")
     playwright_scraper_url: str = os.getenv("PLAYWRIGHT_SCRAPER_URL", "http://playwright-scraper:8002")
     ai_analyzer_url: str = os.getenv("AI_ANALYZER_URL", "http://ai-analyzer:8000")
-    notification_service_health_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8001")
+    notification_service_health_url: str = os.getenv("NOTIFICATION_SERVICE_URL", "http://notification-service:8004")
     n8n_url: str = os.getenv("N8N_URL", "http://n8n:5678")
 
 
