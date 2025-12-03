@@ -7,6 +7,7 @@ Handles storage and retrieval of health check results from PostgreSQL.
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import uuid
+import json
 
 from src.db.connection import get_db_connection
 from src.utils.logger import get_logger
@@ -49,14 +50,14 @@ class HealthRepository:
                     """
                     INSERT INTO health_checks
                     (id, service_name, status, check_timestamp, check_duration_ms, details_json, created_at)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
                     """,
                     check_id,
                     service_name,
                     status,
                     check_timestamp,
                     check_duration_ms,
-                    details or {},
+                    json.dumps(details or {}),
                     check_timestamp,
                 )
 

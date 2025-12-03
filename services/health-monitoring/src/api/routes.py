@@ -7,6 +7,7 @@ Provides REST API for operators to query health status, errors, and trigger manu
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timezone
 from typing import Optional, List
+import json
 
 from src.models import (
     HealthCheckResponse,
@@ -90,7 +91,7 @@ async def get_aggregate_health() -> AggregateHealthResponse:
                 status=check["status"],
                 check_timestamp=check["check_timestamp"],
                 check_duration_ms=check["check_duration_ms"],
-                details=check.get("details"),
+                details=json.loads(check.get("details")) if isinstance(check.get("details"), str) else check.get("details"),
             )
             for check in latest_checks
         ]
