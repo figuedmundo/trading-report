@@ -1,0 +1,139 @@
+{
+  "name": "Email Report Processing",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "webhook/trading-reports",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "Email Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "{{WEBHOOK_ID}}",
+      "id": "node-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "const emailBody = $node['Email Webhook Trigger'].json.body;\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: $node['Email Webhook Trigger'].json.from,\n  emailSubject: $node['Email Webhook Trigger'].json.subject,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "name": "Extract Report URL",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "id": "node-extract-url"
+    },
+    {
+      "parameters": {
+        "url": "http://playwright-scraper:8002/api/v1/scrape",
+        "method": "POST",
+        "bodyParametersJson": "{\"url\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"selectors\": {\"title\": \"article h2\", \"content\": \"div.entry-content\"}}",
+        "options": {
+          "timeout": 120
+        }
+      },
+      "name": "Playwright Scraper",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 150],
+      "id": "node-scraper"
+    },
+    {
+      "parameters": {
+        "url": "http://ai-analyzer:8000/api/v1/analyze",
+        "method": "POST",
+        "bodyParametersJson": "{\"content\": \"={{$node['Playwright Scraper'].json.content}}\", \"title\": \"={{$node['Playwright Scraper'].json.title}}\", \"analysisType\": \"trading_report\", \"provider\": \"={{process.env.AI_PROVIDER || 'anthropic'}}\"}",
+        "options": {
+          "timeout": 60
+        }
+      },
+      "name": "AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 450],
+      "id": "node-analyzer"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$node['AI Analysis'].json.status}}",
+              "condition": "equal",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "name": "Analysis Success Check",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "id": "node-check-analysis"
+    },
+    {
+      "parameters": {
+        "url": "http://notification-service:8004/api/v1/notify",
+        "method": "POST",
+        "bodyParametersJson": "{\"recipients\": {\"email\": [\"={{$node['Extract Report URL'].json.emailFrom}}\"]}, \"subject\": \"Trading Report Analysis\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
+        "options": {
+          "timeout": 30
+        }
+      },
+      "name": "Send Email Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 200],
+      "id": "node-email-notify"
+    },
+    {
+      "parameters": {
+        "url": "http://notification-service:8004/api/v1/notify",
+        "method": "POST",
+        "bodyParametersJson": "{\"recipients\": {\"telegram\": [\"={{process.env.TELEGRAM_CHAT_ID}}\"]}, \"subject\": \"Trading Report\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
+        "options": {
+          "timeout": 30
+        }
+      },
+      "name": "Send Telegram Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1050, 400],
+      "id": "node-telegram-notify"
+    },
+    {
+      "parameters": {
+        "functionCode": "const auditEntry = {\n  timestamp: new Date().toISOString(),\n  emailFrom: $node['Extract Report URL'].json.emailFrom,\n  reportUrl: $node['Extract Report URL'].json.reportUrl,\n  reportTitle: $node['Playwright Scraper'].json.title,\n  analysisStatus: $node['AI Analysis'].json.status,\n  workflowStatus: 'completed'\n};\n\nreturn auditEntry;"
+      },
+      "name": "Audit Log Entry",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 300],
+      "id": "node-audit"
+    }
+  ],
+  "connections": {
+    "Email Webhook Trigger": {
+      "main": [[{"node": "Extract Report URL", "type": "main", "index": 0}]]
+    },
+    "Extract Report URL": {
+      "main": [[{"node": "Playwright Scraper", "type": "main", "index": 0}, {"node": "AI Analysis", "type": "main", "index": 0}]]
+    },
+    "Playwright Scraper": {
+      "main": [[{"node": "AI Analysis", "type": "main", "index": 0}]]
+    },
+    "AI Analysis": {
+      "main": [[{"node": "Analysis Success Check", "type": "main", "index": 0}]]
+    },
+    "Analysis Success Check": {
+      "main": [[{"node": "Send Email Notification", "type": "main", "index": 0}, {"node": "Send Telegram Notification", "type": "main", "index": 0}], []]
+    },
+    "Send Email Notification": {
+      "main": [[{"node": "Audit Log Entry", "type": "main", "index": 0}]]
+    },
+    "Send Telegram Notification": {
+      "main": [[{"node": "Audit Log Entry", "type": "main", "index": 0}]]
+    }
+  }
+}

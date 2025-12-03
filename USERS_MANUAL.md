@@ -5,12 +5,13 @@
 1. [Overview](#overview)
 2. [Quick Start Guide](#quick-start-guide)
 3. [System Configuration](#system-configuration)
-4. [Using the System](#using-the-system)
-5. [API Reference](#api-reference)
-6. [Troubleshooting](#troubleshooting)
-7. [FAQ](#faq)
-8. [Security Best Practices](#security-best-practices)
-9. [Maintenance](#maintenance)
+4. [N8N Workflow Configuration](#n8n-workflow-configuration)
+5. [Using the System](#using-the-system)
+6. [API Reference](#api-reference)
+7. [Troubleshooting](#troubleshooting)
+8. [FAQ](#faq)
+9. [Security Best Practices](#security-best-practices)
+10. [Maintenance](#maintenance)
 
 ---
 
@@ -226,6 +227,213 @@ open http://localhost:5678
 | `LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `ENVIRONMENT` | No | development | Environment (development, production) |
 | `PORT` | No | 8000 | Service port |
+
+---
+
+## N8N Workflow Configuration
+
+### Accessing N8N Dashboard
+
+Once all services are running, access N8N at:
+```
+http://localhost:5678
+```
+
+The N8N interface allows you to:
+- View and monitor workflows
+- Check execution history
+- Manually trigger workflows
+- Edit workflow configurations
+
+### Pre-Built Workflow: Email Report Processing
+
+The system includes a main workflow that handles the complete email-to-notification pipeline.
+
+#### Workflow Steps
+
+1. **Email Webhook Trigger**
+   - Receives email event from webhook service
+   - Passes email metadata (from, subject, body, URL)
+
+2. **Extract Report URL** (Data transformer)
+   - Searches email body for report portal URL
+   - Extracts URL for scraping
+
+3. **Playwright Scraper** (HTTP Request Node)
+   - Calls scraper service to extract report content
+   - Inputs: Portal URL, username, password
+   - Outputs: HTML content, extracted text, images, screenshots
+
+4. **AI Analysis** (HTTP Request Node)
+   - Sends extracted content to AI analyzer
+   - Generates executive summary (200-300 words)
+   - Extracts key trading signals
+   - Returns sentiment analysis
+
+5. **Notification Sender** (Conditional Logic)
+   - Checks if analysis succeeded
+   - Branches: Email + Telegram (both) or Email only
+   - Formats messages based on channel
+
+6. **Send Email Notification** (HTTP Request Node)
+   - Formats HTML email with summary
+   - Includes original report link
+   - Sends via notification service
+
+7. **Send Telegram Notification** (HTTP Request Node)
+   - Formats message with emojis
+   - Includes quick links
+   - Sends to configured chat ID
+
+8. **Audit Logging** (Data transformer)
+   - Records workflow execution
+   - Stores status, timestamps, errors
+   - Saves to PostgreSQL via webhook
+
+### Manual Workflow Import
+
+If you need to re-import the workflow:
+
+1. **Export workflow JSON**:
+   ```bash
+   # Workflows are stored in N8N database
+   # No manual export needed - they persist
+   ```
+
+2. **Create New Workflow in N8N UI**:
+   - Go to Workflows → Create New
+   - Use the Web UI to configure nodes
+   - Save with descriptive name
+
+3. **Configure Webhook Trigger**:
+   - Add "Webhook" trigger node
+   - Set to POST method
+   - URL path: `/webhook/email`
+   - Authentication: Basic auth with email-webhook credentials
+
+4. **Add Service Calls**:
+   - Use "HTTP Request" nodes
+   - Point to local service URLs:
+     - Scraper: `http://playwright-scraper:8002/api/v1/scrape`
+     - AI Analyzer: `http://ai-analyzer:8000/api/v1/analyze`
+     - Notifications: `http://notification-service:8004/api/v1/notify`
+
+### Customizing Workflows
+
+#### Change Analysis Parameters
+
+To modify what the AI analyzer extracts:
+
+1. Open N8N UI → select workflow
+2. Find "AI Analysis" HTTP Request node
+3. Edit request body:
+   ```json
+   {
+     "content": "{{ $node.DataTransformer.json.extracted_text }}",
+     "focus": ["trading_signals", "risk_analysis"],
+     "max_length": 300
+   }
+   ```
+
+#### Change Notification Recipients
+
+To send to different channels or recipients:
+
+1. Find "Notification Sender" node
+2. Modify recipient configuration:
+   ```json
+   {
+     "email_recipients": ["user@example.com"],
+     "telegram_enabled": true,
+     "telegram_chat_ids": ["123456789"]
+   }
+   ```
+
+#### Add New Steps to Workflow
+
+Example: Add a database check before processing:
+
+1. Add new "Function" node before webhook handler
+2. Check if email was already processed:
+   ```javascript
+   // Prevent duplicate processing
+   const emailId = $node.Webhook.json.message_id;
+   return {
+     isDuplicate: await checkDatabase(emailId)
+   };
+   ```
+
+3. Use conditional logic to skip if duplicate
+
+### Monitoring Workflow Execution
+
+#### Via N8N Dashboard
+
+1. Navigate to **Workflows**
+2. Click workflow name
+3. View **Execution History** tab showing:
+   - Execution timestamp
+   - Success/Failure status
+   - Duration
+   - Error messages (if failed)
+
+#### Via Database Queries
+
+```bash
+make db-shell
+
+# Check workflow execution logs
+SELECT * FROM system_logs
+WHERE service = 'n8n'
+AND created_at > NOW() - INTERVAL '1 hour'
+ORDER BY created_at DESC;
+
+# Count successful/failed executions
+SELECT status, COUNT(*)
+FROM execution_logs
+GROUP BY status;
+```
+
+#### Via Logs
+
+```bash
+# Watch N8N logs in real-time
+docker-compose logs -f n8n
+
+# Search for specific workflow errors
+docker-compose logs n8n | grep -i "error"
+```
+
+### Workflow Debugging
+
+#### Common Issues
+
+**Issue**: Workflow appears to run but no notifications sent
+- Check "Send Email" or "Send Telegram" nodes for connection errors
+- Verify SMTP/Telegram credentials in environment
+- Check notification service health: `curl http://localhost:8004/health`
+
+**Issue**: Scraper returns empty content
+- Check if portal URL is correct
+- Verify trading portal credentials haven't changed
+- Check Playwright logs: `make logs-service SERVICE=playwright-scraper`
+- Verify the portal login selectors haven't changed
+
+**Issue**: AI analysis returns generic results
+- Check if API key is still valid (Anthropic/Groq)
+- Verify API rate limits haven't been exceeded
+- Try submitting a test request directly to AI service:
+  ```bash
+  curl -X POST http://localhost:8000/api/v1/analyze \
+    -H "Content-Type: application/json" \
+    -d '{"content":"test trading report"}'
+  ```
+
+**Issue**: Webhook not triggering workflow
+- Verify webhook service is running: `curl http://localhost:8001/health`
+- Check webhook logs: `make logs-service SERVICE=email-webhook`
+- Manually test webhook with `curl` (see Testing section)
+- Verify N8N webhook URL matches email provider configuration
 
 ---
 

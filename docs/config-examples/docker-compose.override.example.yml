@@ -1,0 +1,364 @@
+# Docker Compose Override Configuration Examples
+#
+# This file shows how to override services in docker-compose.yml for different scenarios.
+# Usage: Copy section to docker-compose.override.yml and customize for your environment
+#
+# Note: docker-compose.override.yml is automatically loaded by Docker Compose
+# and is typically NOT committed to git (add to .gitignore)
+
+# ============================================================================
+# EXAMPLE 1: Development Environment with Debug Logging
+# ============================================================================
+# Override services to enable debug logging and faster rebuilds
+
+services:
+  email-webhook:
+    environment:
+      LOG_LEVEL: DEBUG
+    volumes:
+      # Hot reload code changes during development
+      - ./services/email-webhook/src:/app/src:cached
+
+  playwright-scraper:
+    environment:
+      LOG_LEVEL: DEBUG
+      PLAYWRIGHT_HEADLESS: "false"  # See browser automation
+    volumes:
+      - ./services/playwright-scraper/src:/app/src:cached
+    deploy:
+      resources:
+        limits:
+          memory: 4G  # More memory for debugging
+
+  ai-analyzer:
+    environment:
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./services/ai-analyzer/src:/app/src:cached
+
+  health-monitoring:
+    environment:
+      LOG_LEVEL: DEBUG
+      HEALTH_CHECK_INTERVAL: 10  # Check more frequently
+    volumes:
+      - ./services/health-monitoring/src:/app/src:cached
+
+  notification-service:
+    environment:
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./services/notification-service/src:/app/src:cached
+
+# ============================================================================
+# EXAMPLE 2: Production Environment with Larger Resource Limits
+# ============================================================================
+# Override for production deployment with higher resource allocation
+
+services:
+  playwright-scraper:
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+        reservations:
+          memory: 3G
+
+  ai-analyzer:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  notification-service:
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  health-monitoring:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+# ============================================================================
+# EXAMPLE 3: Minimal Resource Footprint (Homelab on Low-Spec Hardware)
+# ============================================================================
+# Override for systems with limited RAM (Raspberry Pi, entry-level NAS, etc.)
+
+services:
+  postgres:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  n8n:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  email-webhook:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  playwright-scraper:
+    deploy:
+      resources:
+        limits:
+          memory: 2G  # Still needs decent memory
+        reservations:
+          memory: 1G
+    environment:
+      PLAYWRIGHT_HEADLESS: "true"  # Disable GUI
+
+  ai-analyzer:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  notification-service:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  health-monitoring:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+# ============================================================================
+# EXAMPLE 4: Local Development with Custom Ports
+# ============================================================================
+# Override to use different ports if defaults are in use
+
+services:
+  email-webhook:
+    ports:
+      - "8011:8001"  # Changed from 8001 to 8011
+
+  playwright-scraper:
+    ports:
+      - "8012:8002"  # Changed from 8002 to 8012
+
+  ai-analyzer:
+    ports:
+      - "8010:8000"  # Changed from 8000 to 8010
+
+  health-monitoring:
+    ports:
+      - "8013:8003"  # Changed from 8003 to 8013
+
+  notification-service:
+    ports:
+      - "8014:8004"  # Changed from 8004 to 8014
+
+  n8n:
+    ports:
+      - "5679:5678"  # Changed from 5678 to 5679
+
+# ============================================================================
+# EXAMPLE 5: External Database (RDS, Managed PostgreSQL)
+# ============================================================================
+# Override to use external database instead of containerized PostgreSQL
+
+services:
+  # Don't override postgres service - just remove it from your docker-compose.yml
+
+  email-webhook:
+    environment:
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@your-rds-endpoint.us-east-1.rds.amazonaws.com:5432/trading_reports
+    depends_on: []  # No longer depends on postgres
+
+  ai-analyzer:
+    environment:
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@your-rds-endpoint.us-east-1.rds.amazonaws.com:5432/trading_reports
+    depends_on: []
+
+  health-monitoring:
+    environment:
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@your-rds-endpoint.us-east-1.rds.amazonaws.com:5432/trading_reports
+    depends_on: []
+
+  notification-service:
+    environment:
+      DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@your-rds-endpoint.us-east-1.rds.amazonaws.com:5432/trading_reports
+    depends_on: []
+
+# ============================================================================
+# EXAMPLE 6: Testing Environment with Test Credentials
+# ============================================================================
+# Override for automated testing with mock credentials
+
+services:
+  playwright-scraper:
+    environment:
+      TRADING_PORTAL_USERNAME: test_user
+      TRADING_PORTAL_PASSWORD: test_password
+      SERVICE_PORT: 8002
+
+  ai-analyzer:
+    environment:
+      # Use test AI provider or mock responses
+      ANALYSIS_TIMEOUT: 10  # Shorter timeout for tests
+
+  notification-service:
+    environment:
+      # Send to test email only
+      SENDER_EMAIL: test@localhost
+
+  health-monitoring:
+    environment:
+      HEALTH_CHECK_INTERVAL: 5  # Faster health checks
+      HEALTH_CHECK_TIMEOUT: 2
+
+# ============================================================================
+# EXAMPLE 7: Using External Container Registry
+# ============================================================================
+# Override to use images from Docker Hub instead of local builds
+
+services:
+  email-webhook:
+    image: yourregistry/trading-email-webhook:latest
+    build: ~  # Don't build locally
+
+  playwright-scraper:
+    image: yourregistry/trading-playwright-scraper:latest
+    build: ~
+
+  ai-analyzer:
+    image: yourregistry/trading-ai-analyzer:latest
+    build: ~
+
+  notification-service:
+    image: yourregistry/trading-notification-service:latest
+    build: ~
+
+  health-monitoring:
+    image: yourregistry/trading-health-monitoring:latest
+    build: ~
+
+# ============================================================================
+# EXAMPLE 8: Using Traefik Reverse Proxy
+# ============================================================================
+# Override to configure Traefik for HTTPS and domain routing
+
+services:
+  email-webhook:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.email-webhook.rule=Host(`trading.yourdomain.com`) && PathPrefix(`/webhook`)"
+      - "traefik.http.routers.email-webhook.entrypoints=websecure"
+      - "traefik.http.routers.email-webhook.tls.certresolver=letsencrypt"
+      - "traefik.http.services.email-webhook.loadbalancer.server.port=8001"
+    networks:
+      - web
+      - trading-network
+
+  n8n:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`trading.yourdomain.com`) && PathPrefix(`/n8n`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+    networks:
+      - web
+      - trading-network
+
+  health-monitoring:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.health.rule=Host(`trading.yourdomain.com`) && PathPrefix(`/health`)"
+      - "traefik.http.routers.health.entrypoints=websecure"
+      - "traefik.http.routers.health.tls.certresolver=letsencrypt"
+      - "traefik.http.services.health.loadbalancer.server.port=8003"
+    networks:
+      - web
+      - trading-network
+
+networks:
+  web:
+    external: true
+
+# ============================================================================
+# EXAMPLE 9: With Custom Health Check Intervals
+# ============================================================================
+# Override health check settings for production vs development
+
+services:
+  postgres:
+    healthcheck:
+      # Production: Less frequent checks
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  health-monitoring:
+    environment:
+      HEALTH_CHECK_INTERVAL: 120  # Check every 2 minutes in production
+      HEALTH_CHECK_TIMEOUT: 10
+      ALERT_BATCH_WINDOW: 120  # Batch alerts for 2 minutes
+
+  n8n:
+    healthcheck:
+      interval: 60s  # Less frequent checks
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
+# ============================================================================
+# EXAMPLE 10: Local N8N Persistence
+# ============================================================================
+# Override to persist N8N data between restarts
+
+services:
+  n8n:
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: trading_reports
+      DB_POSTGRESDB_USER: n8n_user
+      DB_POSTGRESDB_PASSWORD: ${N8N_DB_PASSWORD}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n_backups:/backups  # For manual backups
+
+# ============================================================================
+# HOW TO USE THESE EXAMPLES
+# ============================================================================
+#
+# 1. Copy the section you need to docker-compose.override.yml:
+#    cp docker-compose.override.example.yml docker-compose.override.yml
+#
+# 2. Edit docker-compose.override.yml with your specific values
+#
+# 3. Run docker-compose:
+#    docker-compose up -d
+#    # Docker Compose automatically merges override file
+#
+# 4. Verify changes:
+#    docker-compose config | grep -A 5 "service_name"
+#
+# NOTE: docker-compose.override.yml is automatically loaded and should be
+#       added to .gitignore to avoid committing environment-specific configs
