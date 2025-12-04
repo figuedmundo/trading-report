@@ -1,14 +1,17 @@
 """
 LLM provider abstraction layer.
 
-Supports both Anthropic Claude and Groq APIs with provider selection logic.
+Supports Anthropic Claude, Groq, and Google Gemini APIs with automatic provider
+selection based on model name prefix. Implements extended thinking capabilities
+for supported providers.
 """
 
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, Type
 from src.utils.logger import get_logger
 from src.utils.exceptions import ConfigurationError
+from src.llm.prompts import get_prompt
 
 logger = get_logger(__name__)
 
@@ -17,15 +20,22 @@ class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
 
     @abstractmethod
-    async def analyze(self, content: str) -> Dict[str, Any]:
+    async def analyze(self, content: str, prompt_type: str = "default") -> Dict[str, Any]:
         """
         Analyze content and return structured response.
 
         Args:
             content: Raw extracted text to analyze
+            prompt_type: Prompt template to use (e.g., "default", "detailed", "conservative")
 
         Returns:
-            Dict with analysis results
+            Dict with analysis results including:
+            - response: markdown text from LLM
+            - thinking: thinking content (if enabled, else None)
+            - thinking_tokens_used: tokens consumed by thinking (if available)
+            - input_tokens: input tokens used
+            - output_tokens: output tokens used
+            - api_provider: provider name
         """
         pass
 
@@ -36,11 +46,20 @@ class LLMProvider(ABC):
 
 
 class AnthropicProvider(LLMProvider):
-    """Anthropic Claude API provider."""
+    """Anthropic Claude API provider with extended thinking support."""
 
-    def __init__(self, api_key: str):
-        """Initialize Anthropic provider."""
+    def __init__(self, api_key: str, thinking_budget_tokens: int = 5000, model_name: str = "claude-3-5-sonnet-20241022"):
+        """
+        Initialize Anthropic provider.
+
+        Args:
+            api_key: Anthropic API key for authentication
+            thinking_budget_tokens: Budget for extended thinking
+            model_name: Claude model to use (default: claude-3-5-sonnet-20241022)
+        """
         self.api_key = api_key
+        self.thinking_budget_tokens = thinking_budget_tokens
+        self.model_name = model_name
         try:
             from anthropic import Anthropic
             self.client = Anthropic(api_key=api_key)
@@ -50,53 +69,67 @@ class AnthropicProvider(LLMProvider):
                 context={"provider": "anthropic"}
             )
 
-    async def analyze(self, content: str) -> Dict[str, Any]:
+    async def analyze(self, content: str, prompt_type: str = "default") -> Dict[str, Any]:
         """
-        Analyze content using Claude API.
+        Analyze content using Claude API with extended thinking.
 
         Args:
             content: Raw extracted text to analyze
+            prompt_type: Prompt template to use
 
         Returns:
             Dict with analysis results
         """
-        import json
+        prompt = get_prompt(content, prompt_type=prompt_type)
 
-        prompt = f"""Analyze the following trading report and extract:
-1. A 200-300 word executive summary
-2. Trading signals (BUY/SELL/HOLD) with symbol, prices, timeframe, and confidence
-3. Market insights (key observations)
-4. Symbols/tickers mentioned
-5. Price targets for each symbol
+        try:
+            # Build thinking config if budget > 0
+            thinking_config = None
+            if self.thinking_budget_tokens > 0:
+                thinking_config = {
+                    "type": "enabled",
+                    "budget_tokens": self.thinking_budget_tokens
+                }
 
-Return as JSON with these keys: summary, trading_signals, market_insights, symbols_mentioned, price_targets
+            response = self.client.messages.create(
+                model=self.model_name,
+                max_tokens=2000,
+                temperature=0,
+                thinking=thinking_config,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
 
-REPORT CONTENT:
-{content}
+            # Extract response content and thinking
+            analysis_text = ""
+            thinking_content = None
+            thinking_tokens_used = None
 
-Return ONLY valid JSON, no markdown formatting."""
+            for block in response.content:
+                if block.type == "text":
+                    analysis_text = block.text
+                elif block.type == "thinking":
+                    thinking_content = block.thinking
+                    # Try to get thinking tokens from usage
+                    if hasattr(response, 'usage') and hasattr(response.usage, 'cache_creation_input_tokens'):
+                        thinking_tokens_used = response.usage.cache_creation_input_tokens
 
-        # Note: Using sync client but wrapping for compatibility
-        response = self.client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=2000,
-            messages=[
-                {"role": "user", "content": prompt}
-            ]
-        )
+            return {
+                "response": analysis_text,
+                "thinking": thinking_content,
+                "thinking_tokens_used": thinking_tokens_used,
+                "input_tokens": response.usage.input_tokens,
+                "output_tokens": response.usage.output_tokens,
+                "api_provider": "anthropic"
+            }
 
-        result_text = response.content[0].text.strip()
-
-        # Clean up JSON if wrapped in markdown code blocks
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-            result_text = result_text.strip()
-
-        analysis = json.loads(result_text)
-        analysis["api_provider"] = "anthropic"
-        return analysis
+        except Exception as e:
+            from src.utils.exceptions import LLMError
+            raise LLMError(
+                f"Anthropic API call failed: {str(e)}",
+                context={"original_error": str(e), "provider": "anthropic"}
+            )
 
     def get_provider_name(self) -> str:
         """Get provider name."""
@@ -106,9 +139,18 @@ Return ONLY valid JSON, no markdown formatting."""
 class GroqProvider(LLMProvider):
     """Groq API provider."""
 
-    def __init__(self, api_key: str):
-        """Initialize Groq provider."""
+    def __init__(self, api_key: str, thinking_budget_tokens: int = 5000, model_name: str = "mixtral-8x7b-32768"):
+        """
+        Initialize Groq provider.
+
+        Args:
+            api_key: Groq API key for authentication
+            thinking_budget_tokens: Budget for extended thinking (not supported by Groq, ignored)
+            model_name: Groq model to use (default: mixtral-8x7b-32768)
+        """
         self.api_key = api_key
+        self.thinking_budget_tokens = thinking_budget_tokens
+        self.model_name = model_name
         try:
             from groq import Groq
             self.client = Groq(api_key=api_key)
@@ -118,82 +160,298 @@ class GroqProvider(LLMProvider):
                 context={"provider": "groq"}
             )
 
-    async def analyze(self, content: str) -> Dict[str, Any]:
+        # Log that thinking is not available for Groq
+        if thinking_budget_tokens > 0:
+            logger.info(
+                "Extended thinking not available for Groq provider - thinking budget ignored",
+                extra={"provider": "groq", "thinking_budget_tokens": thinking_budget_tokens}
+            )
+
+    async def analyze(self, content: str, prompt_type: str = "default") -> Dict[str, Any]:
         """
         Analyze content using Groq API.
 
         Args:
             content: Raw extracted text to analyze
+            prompt_type: Prompt template to use
 
         Returns:
             Dict with analysis results
         """
-        import json
+        prompt = get_prompt(content, prompt_type=prompt_type)
 
-        prompt = f"""Analyze the following trading report and extract:
-1. A 200-300 word executive summary
-2. Trading signals (BUY/SELL/HOLD) with symbol, prices, timeframe, and confidence
-3. Market insights (key observations)
-4. Symbols/tickers mentioned
-5. Price targets for each symbol
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=2000,
+                temperature=0,
+            )
 
-Return as JSON with these keys: summary, trading_signals, market_insights, symbols_mentioned, price_targets
+            result_text = response.choices[0].message.content.strip()
 
-REPORT CONTENT:
-{content}
+            return {
+                "response": result_text,
+                "thinking": None,
+                "thinking_tokens_used": None,
+                "input_tokens": getattr(response.usage, 'prompt_tokens', None),
+                "output_tokens": getattr(response.usage, 'completion_tokens', None),
+                "api_provider": "groq"
+            }
 
-Return ONLY valid JSON, no markdown formatting."""
-
-        # Note: Using sync client but wrapping for compatibility
-        response = self.client.chat.completions.create(
-            model="mixtral-8x7b-32768",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=2000,
-        )
-
-        result_text = response.choices[0].message.content.strip()
-
-        # Clean up JSON if wrapped in markdown code blocks
-        if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-            result_text = result_text.strip()
-
-        analysis = json.loads(result_text)
-        analysis["api_provider"] = "groq"
-        return analysis
+        except Exception as e:
+            from src.utils.exceptions import LLMError
+            raise LLMError(
+                f"Groq API call failed: {str(e)}",
+                context={"original_error": str(e), "provider": "groq"}
+            )
 
     def get_provider_name(self) -> str:
         """Get provider name."""
         return "groq"
 
 
+class GoogleProvider(LLMProvider):
+    """Google Gemini API provider with extended thinking support using new google-genai SDK."""
+
+    def __init__(self, api_key: str, thinking_budget_tokens: int = 5000, model_name: str = "gemini-2.0-flash"):
+        """
+        Initialize Google provider.
+
+        Args:
+            api_key: Google API key for authentication
+            thinking_budget_tokens: Budget for extended thinking (if supported)
+            model_name: Gemini model to use (default: gemini-2.0-flash)
+        """
+        self.api_key = api_key
+        self.thinking_budget_tokens = thinking_budget_tokens
+        self.model_name = model_name
+        try:
+            from google import genai
+            self.client = genai.Client(api_key=api_key)
+        except ImportError:
+            raise ConfigurationError(
+                "google-genai library not installed. Install with: pip install google-genai",
+                context={"provider": "google"}
+            )
+
+    async def analyze(self, content: str, prompt_type: str = "default") -> Dict[str, Any]:
+        """
+        Analyze content using Google Gemini API with new google-genai SDK.
+
+        Args:
+            content: Raw extracted text to analyze
+            prompt_type: Prompt template to use
+
+        Returns:
+            Dict with analysis results
+        """
+        prompt = get_prompt(content, prompt_type=prompt_type)
+
+        try:
+            from google.genai import types
+
+            # Build config with thinking if budget > 0
+            config = types.GenerateContentConfig(
+                max_output_tokens=2000,
+                temperature=0,
+            )
+
+            # Add thinking config if supported and budget > 0
+            if self.thinking_budget_tokens > 0:
+                try:
+                    config.thinking_config = types.ThinkingConfig(
+                        budget_tokens=self.thinking_budget_tokens
+                    )
+                    logger.info(
+                        "Extended thinking enabled for Gemini",
+                        extra={"model": self.model_name, "budget": self.thinking_budget_tokens}
+                    )
+                except Exception:
+                    # If thinking not supported, continue without it
+                    logger.info("Extended thinking not available for this Gemini model")
+
+            # Call Gemini API using new SDK
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=config,
+            )
+
+            # Extract text from response
+            result_text = response.text if hasattr(response, 'text') else str(response)
+
+            # Extract usage metadata
+            input_tokens = None
+            output_tokens = None
+            if hasattr(response, 'usage_metadata'):
+                input_tokens = response.usage_metadata.prompt_token_count
+                output_tokens = response.usage_metadata.candidates_token_count
+
+            return {
+                "response": result_text,
+                "thinking": None,  # Future: Extract thinking from response if available
+                "thinking_tokens_used": None,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "api_provider": "google",
+                "model_name": self.model_name,
+            }
+
+        except Exception as e:
+            from src.utils.exceptions import LLMError
+            logger.error(
+                "Google Gemini API call failed",
+                extra={"error": str(e), "provider": "google", "model": self.model_name}
+            )
+            raise LLMError(
+                f"Google Gemini API call failed: {str(e)}",
+                context={"original_error": str(e), "provider": "google", "model": self.model_name}
+            )
+
+    def get_provider_name(self) -> str:
+        """Get provider name."""
+        return "google"
+
+
+def get_provider_from_model(model_name: str) -> Tuple[Type[LLMProvider], str]:
+    """
+    Detect LLM provider from model name prefix.
+
+    Args:
+        model_name: Model identifier (e.g., "claude-3-5-sonnet-20241022")
+
+    Returns:
+        Tuple of (ProviderClass, provider_name)
+
+    Raises:
+        ConfigurationError: If provider not detected or API key missing
+    """
+    if not model_name:
+        raise ConfigurationError(
+            "LLM_MODEL environment variable not set. "
+            "Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, gemini-2.0-flash",
+            context={"model_name": model_name}
+        )
+
+    # Extract prefix (before first digit or hyphen)
+    prefix = model_name.split('-')[0].lower()
+
+    provider_map = {
+        'claude': (AnthropicProvider, 'ANTHROPIC_API_KEY'),
+        'mixtral': (GroqProvider, 'GROQ_API_KEY'),
+        'llama': (GroqProvider, 'GROQ_API_KEY'),
+        'gemini': (GoogleProvider, 'GOOGLE_API_KEY'),
+    }
+
+    if prefix not in provider_map:
+        raise ConfigurationError(
+            f"Unknown model prefix: {prefix}. "
+            f"Supported prefixes: {', '.join(provider_map.keys())}. "
+            f"Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, gemini-2.0-flash",
+            context={"model_name": model_name, "prefix": prefix}
+        )
+
+    provider_class, api_key_var = provider_map[prefix]
+    api_key = os.getenv(api_key_var)
+
+    if not api_key:
+        raise ConfigurationError(
+            f"API key {api_key_var} required for {prefix} models. "
+            f"Set {api_key_var} environment variable or choose a different LLM_MODEL",
+            context={"model_name": model_name, "provider": prefix, "required_key": api_key_var}
+        )
+
+    logger.info(
+        f"Detected provider from model name",
+        extra={"model_name": model_name, "prefix": prefix, "provider": prefix}
+    )
+
+    return provider_class, prefix
+
+
 def get_llm_provider() -> LLMProvider:
     """
     Factory function to get LLM provider based on environment variables.
 
-    Checks ANTHROPIC_API_KEY first, falls back to GROQ_API_KEY.
+    Supports two modes:
+    1. Auto-detection: Uses LLM_MODEL prefix to detect provider (recommended)
+    2. Explicit: Uses AI_PROVIDER to override detection (optional)
+
+    Then instantiates with thinking budget and model name.
 
     Returns:
         Configured LLMProvider instance
 
     Raises:
-        ConfigurationError: If no API keys are configured
+        ConfigurationError: If required variables not set or API key missing
     """
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-    groq_key = os.getenv("GROQ_API_KEY")
+    from src.config import get_config
 
-    if anthropic_key:
-        logger.info("Using Anthropic provider for LLM analysis")
-        return AnthropicProvider(anthropic_key)
-    elif groq_key:
-        logger.info("Using Groq provider for LLM analysis")
-        return GroqProvider(groq_key)
-    else:
+    config = get_config()
+
+    # Validate LLM_MODEL is set
+    if not config.llm_model:
         raise ConfigurationError(
-            "No LLM API key found. Set ANTHROPIC_API_KEY or GROQ_API_KEY",
-            context={"provider": "none"}
+            "LLM_MODEL environment variable not set. "
+            "Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, gemini-2.0-flash",
+            context={}
         )
+
+    # Determine provider: explicit or auto-detect
+    if config.ai_provider:
+        # Explicit provider override
+        provider_name = config.ai_provider.lower()
+        provider_map = {
+            'anthropic': (AnthropicProvider, 'ANTHROPIC_API_KEY'),
+            'groq': (GroqProvider, 'GROQ_API_KEY'),
+            'google': (GoogleProvider, 'GOOGLE_API_KEY'),
+        }
+
+        if provider_name not in provider_map:
+            raise ConfigurationError(
+                f"Unknown AI_PROVIDER: {provider_name}. "
+                f"Options: anthropic, groq, google",
+                context={"ai_provider": provider_name}
+            )
+
+        provider_class, api_key_var = provider_map[provider_name]
+        logger.info(
+            "Using explicitly configured provider",
+            extra={"provider": provider_name, "model": config.llm_model}
+        )
+    else:
+        # Auto-detect from model name
+        provider_class, provider_name = get_provider_from_model(config.llm_model)
+
+    # Get API key for detected/explicit provider
+    api_key_map = {
+        'anthropic': config.anthropic_api_key,
+        'groq': config.groq_api_key,
+        'google': config.google_api_key,
+    }
+
+    api_key = api_key_map.get(provider_name)
+
+    if not api_key:
+        raise ConfigurationError(
+            f"API key required for {provider_name} provider. "
+            f"Check environment variables and LLM_MODEL setting",
+            context={"provider": provider_name, "model_name": config.llm_model}
+        )
+
+    # Instantiate provider with thinking budget and model name
+    provider = provider_class(api_key, thinking_budget_tokens=config.thinking_budget_tokens, model_name=config.llm_model)
+
+    logger.info(
+        "LLM provider initialized",
+        extra={
+            "provider": provider_name,
+            "model": config.llm_model,
+            "thinking_budget_tokens": config.thinking_budget_tokens
+        }
+    )
+
+    return provider

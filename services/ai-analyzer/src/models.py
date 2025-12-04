@@ -4,7 +4,7 @@ Pydantic models for request and response validation.
 Defines all input validation models and output response structures.
 """
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 from typing import Optional, List, Dict
 
 
@@ -47,13 +47,27 @@ class AnalysisSuccessResponse(BaseModel):
     """Success response body for analysis endpoint."""
 
     report_id: str
-    api_provider: str  # anthropic, groq, or fallback_keyword
+    api_provider: str  # anthropic, groq, google, or fallback_keyword
     summary: str
-    trading_signals: List[TradingSignal] = []
-    market_insights: List[str] = []
-    symbols_mentioned: List[str] = []
-    price_targets: Dict[str, Optional[float]] = {}
+    trading_signals: List[Dict] = Field(default_factory=list)
+    market_insights: List[str] = Field(default_factory=list)
+    symbols_mentioned: List[str] = Field(default_factory=list)
+    price_targets: Dict[str, Optional[float]] = Field(default_factory=dict)
     raw_extracted_text: str
+
+    # Extended thinking metadata (optional)
+    thinking_budget_tokens: Optional[int] = Field(default=None, description="Token budget allocated for extended thinking")
+    thinking_tokens_used: Optional[int] = Field(default=None, description="Actual tokens consumed by thinking process")
+    thinking_content: Optional[str] = Field(default=None, description="Full reasoning trace from extended thinking")
+
+    # Trading operations metadata
+    operations_found: bool = Field(default=False, description="Whether trading operations were actually extracted")
+
+    # Provider and performance metadata
+    model_name: Optional[str] = Field(default=None, description="LLM model name used for analysis")
+    input_tokens: Optional[int] = Field(default=None, description="Input tokens used by LLM")
+    output_tokens: Optional[int] = Field(default=None, description="Output tokens used by LLM")
+    response_latency_ms: Optional[int] = Field(default=None, description="Total response time in milliseconds")
 
 
 class AnalysisErrorResponse(BaseModel):

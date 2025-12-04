@@ -72,7 +72,7 @@ class ContentExtractor:
 
     async def _extract_title(self, page: Page) -> str:
         """
-        Extract page title from article h2 selector.
+        Extract page title from article h2 selector with fallback strategies.
 
         Args:
             page: Playwright page object
@@ -80,22 +80,31 @@ class ContentExtractor:
         Returns:
             Title text or empty string if not found
         """
-        try:
-            # Wait for element visibility
-            locator = page.locator(self.config.title_selector)
-            await locator.wait_for(state="visible", timeout=self.config.page_load_timeout * 1000)
+        # Try multiple selectors in order of preference
+        selectors = [
+            self.config.title_selector,  # article h2
+            "h1.entry-title",  # WordPress common
+            "h1",  # Generic H1
+            "article h1",  # Article H1
+            "title",  # Page title as last resort
+        ]
 
-            # Extract text content
-            title = await locator.text_content()
-            return title.strip() if title else ""
+        for selector in selectors:
+            try:
+                locator = page.locator(selector).first
+                title = await locator.text_content(timeout=5000)
+                if title and title.strip():
+                    logger.info(f"Extracted title using selector: {selector}")
+                    return title.strip()
+            except Exception:
+                continue
 
-        except Exception as e:
-            logger.warning(f"Failed to extract title: {e}")
-            return ""
+        logger.warning("Failed to extract title with all selectors")
+        return ""
 
     async def _extract_html_content(self, page: Page) -> str:
         """
-        Extract and clean HTML content.
+        Extract and clean HTML content with fallback strategies.
 
         Args:
             page: Playwright page object
@@ -103,25 +112,35 @@ class ContentExtractor:
         Returns:
             Cleaned HTML content
         """
-        try:
-            # Get content element
-            locator = page.locator(self.config.content_container_selector)
+        # Try multiple selectors in order of preference
+        selectors = [
+            self.config.content_container_selector,  # div.entry-content
+            "article",  # Generic article
+            ".post-content",  # Common WordPress
+            ".content",  # Generic content
+            "main",  # Main content area
+            "body",  # Last resort - full page
+        ]
 
-            # Extract inner HTML
-            html = await locator.inner_html()
+        for selector in selectors:
+            try:
+                locator = page.locator(selector).first
+                html = await locator.inner_html(timeout=10000)
+                if html and html.strip():
+                    # Clean script tags
+                    cleaned_html = self._clean_scripts(html)
+                    if cleaned_html and len(cleaned_html.strip()) > 100:
+                        logger.info(f"Extracted HTML content using selector: {selector} ({len(cleaned_html)} chars)")
+                        return cleaned_html
+            except Exception:
+                continue
 
-            # Clean script tags
-            cleaned_html = self._clean_scripts(html)
-
-            return cleaned_html if cleaned_html else ""
-
-        except Exception as e:
-            logger.warning(f"Failed to extract HTML content: {e}")
-            return ""
+        logger.warning("Failed to extract HTML content with all selectors")
+        return ""
 
     async def _extract_text_content(self, page: Page) -> str:
         """
-        Extract plain text content.
+        Extract plain text content with fallback strategies.
 
         Args:
             page: Playwright page object
@@ -129,18 +148,28 @@ class ContentExtractor:
         Returns:
             Plain text content
         """
-        try:
-            # Get content element
-            locator = page.locator(self.config.content_container_selector)
+        # Try multiple selectors in order of preference
+        selectors = [
+            self.config.content_container_selector,  # div.entry-content
+            "article",  # Generic article
+            ".post-content",  # Common WordPress
+            ".content",  # Generic content
+            "main",  # Main content area
+            "body",  # Last resort - full page
+        ]
 
-            # Extract inner text
-            text = await locator.inner_text()
+        for selector in selectors:
+            try:
+                locator = page.locator(selector).first
+                text = await locator.inner_text(timeout=10000)
+                if text and text.strip() and len(text.strip()) > 100:
+                    logger.info(f"Extracted text content using selector: {selector} ({len(text)} chars)")
+                    return text.strip()
+            except Exception:
+                continue
 
-            return text.strip() if text else ""
-
-        except Exception as e:
-            logger.warning(f"Failed to extract text content: {e}")
-            return ""
+        logger.warning("Failed to extract text content with all selectors")
+        return ""
 
     @staticmethod
     def _clean_scripts(html: str) -> str:

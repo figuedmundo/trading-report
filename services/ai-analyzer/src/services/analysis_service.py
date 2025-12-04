@@ -2,16 +2,16 @@
 Analysis service orchestration layer.
 
 Coordinates LLM analysis, fallback extraction, database persistence, and error handling.
+Manages the complete workflow from analysis request to stored response.
 """
 
-from typing import Dict, Any, List
-from datetime import datetime, timezone
+import time
 from src.llm.analyzer import LLMAnalyzer
 from src.extraction.fallback import FallbackExtractor
 from src.extraction.confidence import ConfidenceScorer
 from src.db.analyses_repository import AnalysesRepository
 from src.utils.logger import get_logger
-from src.models import AnalysisSuccessResponse, TradingSignal
+from src.models import AnalysisSuccessResponse
 
 logger = get_logger(__name__)
 
@@ -48,7 +48,7 @@ class AnalysisService:
         Raises:
             Exception: On fatal errors (no LLM + fallback both failed)
         """
-        start_time = datetime.now(timezone.utc)
+        start_time = time.time()
 
         logger.info(
             "Analysis request received",
@@ -68,6 +68,10 @@ class AnalysisService:
                 extra={"report_id": report_id}
             )
             analysis_result = self.fallback_extractor.extract_analysis(raw_extracted_text)
+            # Fallback doesn't produce thinking metadata
+            analysis_result["thinking_tokens_used"] = None
+            analysis_result["thinking_content"] = None
+            analysis_result["operations_found"] = False
 
         # Get provider name
         api_provider = analysis_result.get("api_provider", "fallback_keyword")
@@ -91,16 +95,29 @@ class AnalysisService:
         if not isinstance(price_targets, dict):
             price_targets = {}
 
+        # Extract thinking metadata
+        thinking_budget_tokens = analysis_result.get("thinking_budget_tokens")
+        thinking_tokens_used = analysis_result.get("thinking_tokens_used")
+        thinking_content = analysis_result.get("thinking_content")
+        operations_found = analysis_result.get("operations_found", False)
+        model_name = analysis_result.get("model_name")
+        input_tokens = analysis_result.get("input_tokens")
+        output_tokens = analysis_result.get("output_tokens")
+
         # Store in database
-        stored_analysis = await self.analyses_repository.create_analysis(
+        await self.analyses_repository.create_analysis(
             report_id=report_id,
             summary=summary,
             trading_signals=scored_signals,
             ai_provider=api_provider,
+            thinking_budget_tokens=thinking_budget_tokens,
+            thinking_tokens_used=thinking_tokens_used,
+            thinking_content=thinking_content,
+            operations_found=operations_found,
         )
 
         # Calculate response duration
-        duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
+        duration_ms = int((time.time() - start_time) * 1000)
 
         logger.info(
             "Analysis completed successfully",
@@ -109,21 +126,27 @@ class AnalysisService:
                 "provider": api_provider,
                 "duration_ms": duration_ms,
                 "signal_count": len(scored_signals),
+                "thinking_tokens_used": thinking_tokens_used,
+                "operations_found": operations_found,
             }
         )
 
-        # Build response with TradingSignal models
-        signal_models = [
-            TradingSignal(**signal) for signal in scored_signals
-        ]
-
+        # Build response with all metadata
         return AnalysisSuccessResponse(
             report_id=report_id,
             api_provider=api_provider,
             summary=summary,
-            trading_signals=signal_models,
+            trading_signals=scored_signals,
             market_insights=market_insights,
             symbols_mentioned=symbols_mentioned,
             price_targets=price_targets,
             raw_extracted_text=raw_extracted_text,
+            thinking_budget_tokens=thinking_budget_tokens,
+            thinking_tokens_used=thinking_tokens_used,
+            thinking_content=thinking_content,
+            operations_found=operations_found,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            response_latency_ms=duration_ms,
         )

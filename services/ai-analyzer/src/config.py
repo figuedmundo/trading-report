@@ -19,9 +19,16 @@ load_dotenv()
 class Config:
     """Centralized configuration from environment variables."""
 
-    # AI Provider Configuration
+    # LLM Provider & Model Configuration
+    ai_provider: Optional[str] = os.getenv("AI_PROVIDER")  # Optional: explicit provider override
+    llm_model: Optional[str] = os.getenv("LLM_MODEL")  # Required: model identifier
+    thinking_budget_tokens: int = int(os.getenv("THINKING_BUDGET_TOKENS", "5000"))
+    prompt_type: str = os.getenv("PROMPT_TYPE", "default")  # Prompt template to use
+
+    # AI Provider Configuration (backward compatibility)
     anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
     groq_api_key: Optional[str] = os.getenv("GROQ_API_KEY")
+    google_api_key: Optional[str] = os.getenv("GOOGLE_API_KEY")
 
     # Service Configuration
     service_port: int = int(os.getenv("SERVICE_PORT", "8002"))
@@ -30,6 +37,38 @@ class Config:
 
     # Database Configuration
     database_url: Optional[str] = os.getenv("DATABASE_URL")
+
+    @classmethod
+    def validate_config(cls) -> bool:
+        """
+        Validate that all required configuration is set.
+
+        Returns True if valid, False otherwise.
+        """
+        config = get_config()
+
+        # Validate LLM_MODEL is set
+        if not config.llm_model:
+            logger.error(
+                "Configuration error: LLM_MODEL environment variable not set. "
+                "Example: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, or gemini-2.0-flash"
+            )
+            return False
+
+        # Validate thinking budget tokens range
+        if config.thinking_budget_tokens < 1000 or config.thinking_budget_tokens > 32000:
+            logger.error(
+                f"Configuration error: THINKING_BUDGET_TOKENS must be between 1000 and 32000, "
+                f"got {config.thinking_budget_tokens}"
+            )
+            return False
+
+        # Validate DATABASE_URL is set
+        if not config.database_url:
+            logger.error("Configuration error: DATABASE_URL environment variable not set")
+            return False
+
+        return True
 
 
 def get_config() -> Config:
@@ -41,24 +80,6 @@ def validate_config() -> bool:
     """
     Validate that all required configuration is set.
 
-    Returns True if valid, False otherwise.
+    Returns True if valid, False otherwise. Kept for backward compatibility.
     """
-    config = get_config()
-
-    required_fields = [
-        ("ANTHROPIC_API_KEY or GROQ_API_KEY", config.anthropic_api_key or config.groq_api_key),
-        ("DATABASE_URL", config.database_url),
-    ]
-
-    all_valid = True
-    for field_name, field_value in required_fields:
-        if not field_value:
-            logger.warning(f"Configuration warning: {field_name} not properly set")
-            all_valid = False
-
-    # Check if at least one API key is configured
-    if not (config.anthropic_api_key or config.groq_api_key):
-        logger.error("Configuration error: At least one API key (ANTHROPIC_API_KEY or GROQ_API_KEY) must be set")
-        all_valid = False
-
-    return all_valid
+    return Config.validate_config()

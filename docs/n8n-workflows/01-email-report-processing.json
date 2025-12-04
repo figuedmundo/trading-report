@@ -4,6 +4,7 @@
     {
       "parameters": {
         "path": "webhook/trading-reports",
+        "httpMethod": "POST",
         "responseMode": "onReceived",
         "options": {}
       },
@@ -16,7 +17,7 @@
     },
     {
       "parameters": {
-        "functionCode": "const emailBody = $node['Email Webhook Trigger'].json.body;\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: $node['Email Webhook Trigger'].json.from,\n  emailSubject: $node['Email Webhook Trigger'].json.subject,\n  timestamp: new Date().toISOString()\n};"
+        "functionCode": "const webhookData = $node['Email Webhook Trigger'].json;\nconst emailBody = webhookData.body.body;\nconst emailFrom = webhookData.body.from;\nconst emailSubject = webhookData.body.subject;\n\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: emailFrom,\n  emailSubject: emailSubject,\n  timestamp: new Date().toISOString()\n};"
       },
       "name": "Extract Report URL",
       "type": "n8n-nodes-base.function",
@@ -28,9 +29,10 @@
       "parameters": {
         "url": "http://playwright-scraper:8002/api/v1/scrape",
         "method": "POST",
-        "bodyParametersJson": "{\"url\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"selectors\": {\"title\": \"article h2\", \"content\": \"div.entry-content\"}}",
+        "sendBody": true,
+        "bodyParametersJson": "{\"url\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"username\": \"={{process.env.TRADING_PORTAL_USERNAME}}\", \"password\": \"={{process.env.TRADING_PORTAL_PASSWORD}}\"}",
         "options": {
-          "timeout": 120
+          "timeout": 300000
         }
       },
       "name": "Playwright Scraper",
@@ -43,9 +45,10 @@
       "parameters": {
         "url": "http://ai-analyzer:8000/api/v1/analyze",
         "method": "POST",
-        "bodyParametersJson": "{\"content\": \"={{$node['Playwright Scraper'].json.content}}\", \"title\": \"={{$node['Playwright Scraper'].json.title}}\", \"analysisType\": \"trading_report\", \"provider\": \"={{process.env.AI_PROVIDER || 'anthropic'}}\"}",
+        "sendBody": true,
+        "bodyParametersJson": "{\"report_id\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"raw_extracted_text\": \"={{$node['Playwright Scraper'].json.html_content || $node['Playwright Scraper'].json.text_content}}\"}",
         "options": {
-          "timeout": 60
+          "timeout": 60000
         }
       },
       "name": "AI Analysis",
@@ -78,7 +81,7 @@
         "method": "POST",
         "bodyParametersJson": "{\"recipients\": {\"email\": [\"={{$node['Extract Report URL'].json.emailFrom}}\"]}, \"subject\": \"Trading Report Analysis\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
         "options": {
-          "timeout": 30
+          "timeout": 30000
         }
       },
       "name": "Send Email Notification",
@@ -93,7 +96,7 @@
         "method": "POST",
         "bodyParametersJson": "{\"recipients\": {\"telegram\": [\"={{process.env.TELEGRAM_CHAT_ID}}\"]}, \"subject\": \"Trading Report\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
         "options": {
-          "timeout": 30
+          "timeout": 30000
         }
       },
       "name": "Send Telegram Notification",
@@ -118,7 +121,7 @@
       "main": [[{"node": "Extract Report URL", "type": "main", "index": 0}]]
     },
     "Extract Report URL": {
-      "main": [[{"node": "Playwright Scraper", "type": "main", "index": 0}, {"node": "AI Analysis", "type": "main", "index": 0}]]
+      "main": [[{"node": "Playwright Scraper", "type": "main", "index": 0}]]
     },
     "Playwright Scraper": {
       "main": [[{"node": "AI Analysis", "type": "main", "index": 0}]]

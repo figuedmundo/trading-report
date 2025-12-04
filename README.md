@@ -4,7 +4,7 @@ Automated monitoring, scraping, analysis, and notification system for trading re
 
 ## 🎯 Features
 
-- **Automated Email Monitoring**: Webhook-based email monitoring for instant report processing
+- **Automated Email Monitoring**: Webhook-based email monitoring with security validation (IP whitelisting, rate limiting, signature verification)
 - **Browser Automation**: Playwright-based scraping with login handling and dynamic content extraction
 - **AI Analysis**: Powered by Claude (Anthropic) or Groq for intelligent report summarization
 - **Unified Multi-Channel Notifications**: Extensible notification service with email (SMTP) and Telegram (Bot API)
@@ -12,36 +12,51 @@ Automated monitoring, scraping, analysis, and notification system for trading re
 - **Persistent Storage**: PostgreSQL database with full audit trail and append-only delivery logs
 - **Scalable Architecture**: Microservices design with Docker containers
 - **Visual Workflow**: N8N for easy workflow management and modification
+- **Health Monitoring & Alerting**: Continuous service monitoring with automatic CRITICAL error detection and batched email alerts
 - **Monitoring**: Built-in health checks and optional Prometheus/Grafana stack
 
 ## 🏗️ Architecture
 
 ```
-Email → Webhook → N8N → [Playwright Scraper] → PostgreSQL
-                   ↓
-                [AI Analyzer] → Analysis Results → PostgreSQL
-                   ↓
-            [Unified Notification Service]
-                   ↓
-              ┌────┴────┐
-         Email (SMTP)  Telegram (Bot API)
-         (retry+rate)  (retry+rate)
-              └────┬────┘
-            Delivery Audit Log
+Email → Webhook Service → N8N → [Playwright Scraper] → PostgreSQL
+   (Security checks)       ↓
+   (IP validation)    [AI Analyzer] → Analysis Results → PostgreSQL
+   (Rate limiting)         ↓
+   (Signature valid)  [Unified Notification Service]
+                           ↓
+                      ┌────┴────┐
+                 Email (SMTP)  Telegram (Bot API)
+                 (retry+rate)  (retry+rate)
+                      └────┬────┘
+                    Delivery Audit Log
+
+Health Monitoring (Continuous - every 60 seconds)
+   └─> Checks all 5 services
+       └─> Error detection & batched alerts
+           └─> Sends alerts via Notification Service
 ```
 
 ### Services
 
 1. **N8N** - Workflow orchestration and automation
-2. **Playwright Scraper** - Browser automation and web scraping
-3. **AI Analyzer** - Report analysis using Claude/Groq
-4. **Unified Notification Service** - Multi-channel delivery with retry logic and rate limiting
+2. **Email Webhook Service** - Email event processing with security validation
+   - IP whitelisting and ban management
+   - Rate limiting and signature validation
+   - Email parsing and extraction
+3. **Playwright Scraper** - Browser automation and web scraping
+4. **AI Analyzer** - Report analysis using Claude/Groq
+5. **Unified Notification Service** - Multi-channel delivery with retry logic and rate limiting
    - Email channel (SMTP with HTML templates)
    - Telegram channel (Bot API with message splitting)
    - Extensible for future channels (SMS, Slack, Discord)
-5. **PostgreSQL** - Data persistence with audit trails
-6. **Redis** - Caching and rate limiting (optional)
-7. **Traefik** - Reverse proxy with SSL (optional)
+6. **Health Monitoring Service** - Continuous service health checks and alerting
+   - Background health check loop (every 60 seconds)
+   - Error log collection and analysis
+   - Alert generation with batching
+   - Automatic email alerts on critical issues
+7. **PostgreSQL** - Data persistence with audit trails
+8. **Redis** - Caching and rate limiting (optional)
+9. **Traefik** - Reverse proxy with SSL (optional)
 
 ## 📋 Prerequisites
 
@@ -188,12 +203,13 @@ See `infrastructure/nginx/README.md` for Nginx setup instructions.
 
 | Service | URL | Purpose |
 |---------|-----|---------|
-| N8N | http://localhost:5678 | Workflow management |
-| Playwright API | http://localhost:8000 | Scraper service |
-| AI Analyzer API | http://localhost:8001 | Analysis service |
-| Notification API | http://localhost:8003 | Unified notification service |
-| Traefik Dashboard | http://localhost:8080 | Reverse proxy admin (optional) |
-| PostgreSQL | localhost:5432 | Database |
+| N8N | http://localhost:5678 | Workflow orchestration |
+| AI Analyzer API | http://localhost:8000 | Report analysis service |
+| Email Webhook | http://localhost:8001 | Email processing & validation |
+| Playwright Scraper API | http://localhost:8002 | Browser automation & scraping |
+| Health Monitoring API | http://localhost:8003 | Health checks & error logging |
+| Notification API | http://localhost:8004 | Multi-channel notification delivery |
+| PostgreSQL | localhost:5432 | Data persistence |
 
 ### Environment Variables
 
@@ -227,9 +243,11 @@ curl -X POST http://localhost:5678/webhook/test \
 
 Each service has interactive API docs:
 
-- Playwright: http://localhost:8000/docs
-- AI Analyzer: http://localhost:8001/docs
-- Notifications: http://localhost:8003/docs
+- AI Analyzer: http://localhost:8000/docs
+- Email Webhook: http://localhost:8001/docs
+- Playwright Scraper: http://localhost:8002/docs
+- Health Monitoring: http://localhost:8003/docs
+- Notifications: http://localhost:8004/docs
 
 **Unified Notification Service Endpoints:**
 - `POST /api/v1/notify` - Send notification to one or more channels
@@ -281,6 +299,33 @@ make monitor
 Access dashboards:
 - Prometheus: http://localhost:9090
 - Grafana: http://localhost:3000 (admin/admin)
+
+### Health Monitoring Service
+
+The system includes a dedicated health monitoring service that continuously checks all services and generates alerts:
+
+```bash
+# View aggregate health status of all services
+curl http://localhost:8003/api/v1/health/status
+
+# Get recent CRITICAL errors
+curl 'http://localhost:8003/api/v1/health/errors?severity=CRITICAL&hours=24'
+
+# Trigger manual health check for a specific service
+curl -X POST http://localhost:8003/api/v1/health/check/ai-analyzer
+
+# View health monitoring logs
+make logs-service SERVICE=health-monitoring
+```
+
+**Features:**
+- Continuous service health monitoring (every 60 seconds)
+- Automatic alert generation with batching to prevent alert storms
+- Persistent health check history and error logs
+- Configurable data retention policies
+- CRITICAL error detection with automatic email alerts
+
+See `HEALTH_MONITORING.md` in `/docs` for detailed operations manual.
 
 ## 🛠️ Development
 
@@ -432,16 +477,32 @@ make db-shell
 ## 📁 Project Structure
 
 ```
-trading-report-automation/
-├── services/              # Microservices
-│   ├── playwright-scraper/
-│   ├── ai-analyzer/
-│   └── notification-service/
-├── database/             # Database schemas and migrations
-├── infrastructure/       # Infrastructure configs (Traefik, Nginx)
-├── scripts/             # Utility scripts
-├── docker-compose.yml   # Docker orchestration
-└── Makefile            # Common commands
+trading-report/
+├── agent-os/                      # Standards & product documentation
+│   ├── product/                   # Product mission, roadmap, tech stack
+│   ├── specs/                     # Implementation specs & tasks
+│   └── standards/                 # Code standards (backend, testing)
+├── database/                      # Database migrations & schemas
+│   ├── migrations/                # 13 sequential SQL migrations
+│   ├── maintenance/               # Database maintenance scripts
+│   └── schemas/
+├── docs/                          # Project documentation
+│   ├── CLAUDE.md                  # AI assistant instructions
+│   ├── DOCUMENTATION.md           # Master documentation index
+│   ├── HEALTH_MONITORING.md       # Operations manual
+│   └── USERS_MANUAL.md            # User guide
+├── services/                      # Microservices
+│   ├── email-webhook/             # Email processing with security validation
+│   ├── playwright-scraper/        # Browser automation & scraping
+│   ├── ai-analyzer/               # Report analysis
+│   ├── notification-service/      # Multi-channel notifications
+│   ├── health-monitoring/         # Health checks & alerting
+│   └── credential-service/        # Credential storage (optional)
+├── scripts/                       # Utility scripts
+├── docker-compose.yml             # Docker orchestration
+├── Makefile                       # Development commands (40+ targets)
+├── README.md                      # This file
+└── .env.example                   # Configuration template
 ```
 
 ## 🤝 Contributing
@@ -465,7 +526,7 @@ This project is licensed under the MIT License.
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (Phase 1 MVP)
+### ✅ Completed (Phases 1-11)
 - [x] Email webhook service & email parsing
 - [x] Secure credential storage & management
 - [x] Playwright browser automation
@@ -473,12 +534,14 @@ This project is licensed under the MIT License.
 - [x] PostgreSQL schema & data persistence
 - [x] AI report analysis with Groq/Anthropic API
 - [x] **Unified notification service** (email + Telegram with retry & rate limiting)
+- [x] Email notification delivery with SMTP integration
+- [x] Telegram notification delivery with Bot API
+- [x] **Webhook endpoint security** (IP whitelisting, signature validation, rate limiting, IP bans)
+- [x] **Health monitoring & error logging** (continuous health checks, alert batching, automatic alerts)
+- [x] N8N workflow integration & orchestration
+- [x] Comprehensive documentation & operator manuals
 
 ### 🚧 In Progress
-- [ ] Email notification delivery (integration with unified service)
-- [ ] Telegram notification delivery (integration with unified service)
-- [ ] Webhook endpoint security & rate limiting
-- [ ] Basic health monitoring & error logging
 
 ### 📋 Planned (Future Phases)
 - [ ] Support for multiple trading portals

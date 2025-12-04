@@ -1,280 +1,260 @@
-# Playwright Scraper Service
-
-Browser automation service for scraping trading reports from password-protected portals.
+# Playwright Scraper Service - Local Development Guide
 
 ## Overview
 
-This service provides a FastAPI-based HTTP API for automated scraping of trading reports from protradingskills.com. It handles:
+The Playwright Scraper Service is a FastAPI-based web scraping service that uses Playwright to extract content from password-protected trading reports on ProTradingSkills.com.
 
-- Portal authentication with credential management
-- Page content extraction (title, HTML, plain text)
-- Image downloading and base64 encoding
-- Full-page screenshot capture
-- Structured error handling with retry logic
+## Prerequisites
 
-## Quick Start
+- Python 3.11+ (Currently tested with Python 3.13.1)
+- pip
+- Virtual environment support
 
-### Setup
+## Local Setup & Installation
 
-1. Copy environment variables:
+### 1. Create and Activate Virtual Environment
+
 ```bash
-cp .env.example .env
+cd services/playwright-scraper
+python -m venv venv
+source venv/bin/activate  # On macOS/Linux
+# OR
+venv\Scripts\activate  # On Windows
 ```
 
-2. Edit `.env` with your portal credentials:
-```bash
-TRADING_PORTAL_USERNAME=your_username
-TRADING_PORTAL_PASSWORD=your_password
-```
+### 2. Install Dependencies
 
-3. Install dependencies:
 ```bash
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Running Locally
+### 3. Install Playwright Browsers
 
 ```bash
-# Install playwright browsers
 playwright install chromium
-
-# Start the service
-uvicorn src.main:app --reload --port 8001
 ```
 
-The service will be available at `http://localhost:8001`
+### 4. Configure Environment Variables
 
-### Docker
+Make sure the `.env` file in the project root contains:
 
 ```bash
-# Build image
-docker build -t playwright-scraper .
+# Playwright Scraper Configuration
+SCRAPER_HEADLESS=false  # Set to true for production
+SCRAPER_DEBUG=true
+SCRAPER_TIMEOUT_MS=30000
 
-# Run container
-docker run -p 8001:8001 --env-file .env playwright-scraper
+# Trading Portal Credentials
+TRADING_PORTAL_URL=https://protradingskills.com
+TRADING_PORTAL_USERNAME=your-email@gmail.com
+TRADING_PORTAL_PASSWORD=your-password
 ```
 
-## API Endpoints
+## Running the Service Locally
 
-### POST /api/v1/scrape
+### Start the Service
 
-Scrape a trading report from a portal URL.
+```bash
+cd services/playwright-scraper
+source venv/bin/activate
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8002
+```
 
-**Request:**
-```json
+The service will start on `http://localhost:8002`
+
+### API Endpoints
+
+#### Health Check
+```bash
+GET http://localhost:8002/health
+```
+
+#### Scrape Report
+```bash
+POST http://localhost:8002/api/v1/scrape
+Content-Type: application/json
+
 {
-  "url": "https://protradingskills.com/report/123"
+  "url": "https://protradingskills.com/analysis/report-url/",
+  "username": "optional-override-username",
+  "password": "optional-override-password"
 }
 ```
 
-**Success Response (200):**
-```json
-{
-  "success": true,
-  "url": "https://protradingskills.com/report/123",
-  "title": "Report Title",
-  "html_content": "<div>...</div>",
-  "text_content": "Report text...",
-  "report_images": [
-    {
-      "url": "https://www.tradingview.com/x/...",
-      "base64": "data:image/png;base64,...",
-      "width": 1595,
-      "height": 902
-    }
-  ],
-  "screenshot_base64": "data:image/png;base64,...",
-  "metadata": {
-    "timestamp": "2025-11-26T10:30:00Z",
-    "browser_version": "1.40.0",
-    "extraction_duration_ms": 5000,
-    "request_id": "uuid"
-  }
-}
-```
+### Example Usage
 
-**Error Response (200 with success=false):**
-```json
-{
-  "success": false,
-  "url": "https://protradingskills.com/report/123",
-  "error": "Login failed after 3 retries",
-  "error_type": "LoginError",
-  "html_content": "",
-  "text_content": "",
-  "report_images": [],
-  "metadata": {...}
-}
-```
-
-### GET /health
-
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "service": "playwright-scraper",
-  "version": "0.1.0"
-}
-```
-
-## Configuration
-
-Set environment variables in `.env` file:
-
-- `TRADING_PORTAL_USERNAME` - Portal login username (required)
-- `TRADING_PORTAL_PASSWORD` - Portal login password (required)
-- `SERVICE_PORT` - Service port (default: 8001)
-- `LOG_LEVEL` - Logging level: INFO, DEBUG (default: INFO)
-- `PLAYWRIGHT_HEADLESS` - Run browser headless (default: true)
-
-## Architecture
-
-### Browser Lifecycle
-
-Browser instance is created fresh for each request:
-1. Launch Chromium with 1920x1080 viewport
-2. Navigate to login page
-3. Perform authentication with retry logic (3 retries, exponential backoff: 1s, 2s, 4s)
-4. Navigate to target report URL
-5. Extract content (title, HTML, text, images)
-6. Download TradingView chart images
-7. Capture full-page screenshot
-8. Close browser and cleanup resources
-
-### Timeouts
-
-- Page load timeout: 60 seconds
-- Login timeout: 30 seconds
-- Image download timeout: 30 seconds per image
-- Request timeout: 120 seconds (complete workflow)
-
-### Error Handling
-
-- **LoginError**: Login failures retry 3x with exponential backoff, then fail
-- **NavigationError**: Navigation failures fail immediately without retries
-- **ExtractionError**: Content extraction failures return partial data
-- **ImageDownloadError**: Failed image downloads are skipped but don't fail request
-- **CredentialError**: Missing credentials fail immediately
-
-All errors are logged with request context including request ID for distributed tracing.
-
-### Logging
-
-JSON structured logs with:
-- ISO timestamp
-- Log level
-- Service name
-- Request ID (for correlation)
-- Message and context fields
-- Automatic credential redaction
-
-## Development
-
-### File Structure
-
-```
-src/
-├── main.py              # FastAPI app entry point
-├── config.py            # Configuration management
-├── models.py            # Pydantic request/response models
-├── browser.py           # BrowserManager with login flow
-├── extractor.py         # Content extraction logic
-├── api/
-│   └── routes.py        # HTTP endpoint handlers
-└── utils/
-    ├── logger.py        # Structured logging
-    ├── exceptions.py    # Custom exception classes
-    ├── image_handler.py # Image download and encoding
-    └── screenshot.py    # Screenshot capture
-tests/
-├── conftest.py          # Pytest fixtures
-└── test_*.py            # Unit tests
-```
-
-### Testing
+#### Using curl:
 
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test file
-pytest tests/test_browser_lifecycle.py -v
+curl -X POST "http://localhost:8002/api/v1/scrape" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://protradingskills.com/analysis/operacion-rapida-en-una-accion-explosiva/"}'
 ```
 
-## Integration with N8N
+#### Using Python requests:
 
-This service is designed to integrate with N8N workflow orchestration:
+```python
+import requests
 
-1. N8N receives webhook with trading report email
-2. N8N calls POST /api/v1/scrape with report URL
-3. Service returns structured response with content and images
-4. N8N routes based on `success` flag and `error_type` field
-5. Response fed to AI analyzer service for content analysis
+response = requests.post(
+    "http://localhost:8002/api/v1/scrape",
+    json={"url": "https://protradingskills.com/analysis/report-url/"}
+)
 
-## Performance
+data = response.json()
+print(f"Title: {data['title']}")
+print(f"Content length: {len(data['text_content'])} chars")
+```
 
-- Fresh browser per request (no session pooling)
-- Expected processing time: 10-20 seconds per report
-- Concurrent requests handled by separate browser instances
-- Docker memory limit: 2GB per container
+## Debugging
 
-## Security
+### View Browser Window
 
-- Credentials read from environment variables only
-- Credentials never logged or exposed in error messages
-- Automatic credential redaction in all logs
-- No sensitive data stored in response payloads
-- Input validation on all request parameters
-- Content sanitization (script tag removal)
+When `SCRAPER_HEADLESS=false` is set in `.env`, you'll see the Chrome browser window open on your machine, allowing you to observe:
 
-## Monitoring
+- Login process
+- Navigation to report URL
+- Content extraction
+- Any errors that occur
 
-Check service health:
+### Check Logs
+
+The service outputs detailed JSON logs to stdout:
+
 ```bash
-curl http://localhost:8001/health
+# Start service and view logs
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8002 --log-level debug
 ```
 
-View service logs:
+### Common Issues
+
+#### 1. Empty Content Extraction
+
+**Symptom:** `title: "Acceder"`, empty `html_content` or `text_content`
+
+**Cause:** Browser is stuck on login page - session isn't persisting
+
+**Solution:** Check `src/browser.py` login verification logic (line 172)
+
+#### 2. Authentication Failures
+
+**Symptom:** Login not working, redirected back to login page
+
+**Possible Causes:**
+- Incorrect credentials in `.env`
+- ProTradingSkills changed login form structure
+- Session cookies not being saved properly
+
+**Debug Steps:**
+1. Set `SCRAPER_HEADLESS=false` to watch browser
+2. Check `TRADING_PORTAL_USERNAME` and `TRADING_PORTAL_PASSWORD` in `.env`
+3. Review logs for login attempt details
+
+#### 3. Timeout Errors
+
+**Symptom:** `Timeout exceeded` errors during extraction
+
+**Solution:** Increase timeout in `.env`:
 ```bash
-docker logs -f <container_id>
+SCRAPER_TIMEOUT_MS=60000  # Increase to 60 seconds
 ```
+
+## Project Structure
+
+```
+services/playwright-scraper/
+├── src/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI application entry point
+│   ├── config.py            # Configuration management
+│   ├── browser.py           # Playwright browser & authentication
+│   ├── extractor.py         # Content extraction with fallback selectors
+│   ├── api/
+│   │   └── routes.py        # API endpoint definitions
+│   └── utils/
+│       ├── logger.py        # Structured logging
+│       └── exceptions.py    # Custom exceptions
+├── tests/                   # pytest test files
+├── venv/                    # Python virtual environment (git-ignored)
+├── requirements.txt         # Python dependencies
+├── Dockerfile              # Docker container definition
+└── README.md               # This file
+```
+
+## Running Tests
+
+```bash
+cd services/playwright-scraper
+source venv/bin/activate
+pytest -v
+```
+
+## Docker vs Local Development
+
+### Docker (Production)
+```bash
+cd /path/to/trading-report
+docker-compose up playwright-scraper
+```
+
+### Local (Development)
+```bash
+cd services/playwright-scraper
+source venv/bin/activate
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8002 --reload
+```
+
+**Key Differences:**
+- Local: See browser window when `SCRAPER_HEADLESS=false`
+- Local: Faster iteration with `--reload` flag
+- Docker: Consistent environment, closer to production
+
+## Next Steps
+
+1. Fix authentication session persistence issue in `src/browser.py`
+2. Add proper login verification (check if still on login page after submission)
+3. Implement cookie persistence across page navigations
+4. Add retry logic with exponential backoff
+5. Implement health check database queries
+
+## Additional Resources
+
+- **Playwright Documentation:** https://playwright.dev/python/
+- **FastAPI Documentation:** https://fastapi.tiangolo.com/
+- **Project Main README:** See project root directory
 
 ## Troubleshooting
 
-### Service won't start
-- Check `.env` file is properly configured
-- Verify port 8001 is not in use
-- Check Docker image built successfully
+### Python 3.13 Compatibility Issues
 
-### Login fails
-- Verify credentials in `.env` are correct
-- Check portal is accessible
-- Review logs for specific error details
+If you encounter build errors with `greenlet` or `pydantic-core`:
 
-### Images not downloading
-- Check internet connectivity
-- Verify TradingView URLs are still valid
-- Review image download timeout settings
+```bash
+# Install compatible versions
+pip install pydantic==2.12.5 pydantic-core==2.41.5
+```
 
-### Browser crashes
-- Check Docker memory limit
-- Monitor system resources
-- Review browser logs for errors
+### Playwright Browser Not Found
 
-## Dependencies
+```bash
+# Reinstall browsers
+playwright install chromium --force
+```
 
-- FastAPI 0.104.1
-- Playwright 1.40.0
-- BeautifulSoup4 4.12.2
-- Pydantic 2.5.0
-- aiohttp 3.9.0
-- uvicorn 0.24.0
+### Port Already in Use
 
-## References
+```bash
+# Find process using port 8002
+lsof -i :8002
 
-- Specification: `/agent-os/specs/2025-11-26-playwright-browser-automation/spec.md`
-- CLAUDE.md: Project conventions and architecture
-- Standards: `/agent-os/standards/` directory
+# Kill the process
+kill -9 <PID>
+```
+
+## Support
+
+For issues or questions:
+1. Check the logs: `docker-compose logs playwright-scraper`
+2. Review the main project documentation
+3. Check ProTradingSkills.com for any changes to their login flow

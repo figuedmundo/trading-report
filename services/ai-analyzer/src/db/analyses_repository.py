@@ -24,6 +24,10 @@ class AnalysesRepository:
         summary: str,
         trading_signals: List[Dict[str, Any]],
         ai_provider: str,
+        thinking_budget_tokens: Optional[int] = None,
+        thinking_tokens_used: Optional[int] = None,
+        thinking_content: Optional[str] = None,
+        operations_found: bool = False,
     ) -> Dict[str, Any]:
         """
         Create and store analysis in database.
@@ -33,6 +37,10 @@ class AnalysesRepository:
             summary: Executive summary text
             trading_signals: List of trading signal dicts
             ai_provider: Name of AI provider used
+            thinking_budget_tokens: Token budget allocated for thinking
+            thinking_tokens_used: Actual tokens consumed by thinking
+            thinking_content: Full reasoning trace from thinking
+            operations_found: Boolean indicating if trading operations were extracted
 
         Returns:
             Created analysis record as dict
@@ -46,6 +54,8 @@ class AnalysesRepository:
                 "report_id": report_id,
                 "provider": ai_provider,
                 "signal_count": len(trading_signals),
+                "operations_found": operations_found,
+                "thinking_tokens_used": thinking_tokens_used,
             }
         )
 
@@ -53,14 +63,23 @@ class AnalysesRepository:
             async with get_db_connection() as conn:
                 # Prepare query with parameterized values to prevent SQL injection
                 query = """
-                    INSERT INTO analyses (report_id, summary, trading_signals, ai_provider, created_at)
-                    VALUES ($1, $2, $3, $4, $5)
-                    RETURNING id, report_id, summary, trading_signals, ai_provider, created_at
+                    INSERT INTO analyses (
+                        report_id, summary, trading_signals, ai_provider,
+                        thinking_budget_tokens, thinking_tokens_used, thinking_content,
+                        operations_found, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    RETURNING id, report_id, summary, trading_signals, ai_provider,
+                              thinking_budget_tokens, thinking_tokens_used, thinking_content,
+                              operations_found, created_at
                 """
 
                 # Convert trading signals to JSON
                 signals_json = json.dumps(trading_signals)
                 now = datetime.utcnow()
+
+                # Use provided thinking budget or default
+                budget_tokens = thinking_budget_tokens or 5000
 
                 # Execute query
                 row = await conn.fetchrow(
@@ -69,6 +88,10 @@ class AnalysesRepository:
                     summary,
                     signals_json,
                     ai_provider,
+                    budget_tokens,
+                    thinking_tokens_used,
+                    thinking_content,
+                    operations_found,
                     now,
                 )
 
@@ -85,6 +108,10 @@ class AnalysesRepository:
                     "summary": row["summary"],
                     "trading_signals": json.loads(row["trading_signals"]),
                     "ai_provider": row["ai_provider"],
+                    "thinking_budget_tokens": row["thinking_budget_tokens"],
+                    "thinking_tokens_used": row["thinking_tokens_used"],
+                    "thinking_content": row["thinking_content"],
+                    "operations_found": row["operations_found"],
                     "created_at": row["created_at"].isoformat(),
                 }
 
@@ -143,7 +170,9 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, trading_signals, ai_provider, created_at
+                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                           thinking_budget_tokens, thinking_tokens_used, thinking_content,
+                           operations_found, created_at
                     FROM analyses
                     WHERE report_id = $1
                     ORDER BY created_at DESC
@@ -162,6 +191,10 @@ class AnalysesRepository:
                     "summary": row["summary"],
                     "trading_signals": json.loads(row["trading_signals"]),
                     "ai_provider": row["ai_provider"],
+                    "thinking_budget_tokens": row["thinking_budget_tokens"],
+                    "thinking_tokens_used": row["thinking_tokens_used"],
+                    "thinking_content": row["thinking_content"],
+                    "operations_found": row["operations_found"],
                     "created_at": row["created_at"].isoformat(),
                 }
 
@@ -205,7 +238,9 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, trading_signals, ai_provider, created_at
+                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                           thinking_budget_tokens, thinking_tokens_used, thinking_content,
+                           operations_found, created_at
                     FROM analyses
                     WHERE ai_provider = $1
                     ORDER BY created_at DESC
@@ -222,6 +257,10 @@ class AnalysesRepository:
                         "summary": row["summary"],
                         "trading_signals": json.loads(row["trading_signals"]),
                         "ai_provider": row["ai_provider"],
+                        "thinking_budget_tokens": row["thinking_budget_tokens"],
+                        "thinking_tokens_used": row["thinking_tokens_used"],
+                        "thinking_content": row["thinking_content"],
+                        "operations_found": row["operations_found"],
                         "created_at": row["created_at"].isoformat(),
                     })
 
@@ -231,6 +270,63 @@ class AnalysesRepository:
             logger.error(
                 f"Database query failed: {str(e)}",
                 extra={"error": str(e)}
+            )
+            raise DatabaseError(
+                f"Failed to retrieve analyses: {str(e)}",
+                context={"error": str(e)}
+            )
+
+    async def get_analyses_by_operations_found(self, operations_found: bool, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Retrieve analyses by operations_found flag.
+
+        Useful for analyzing extraction success rates and statistics.
+
+        Args:
+            operations_found: Boolean flag for operations extraction
+            limit: Maximum number of records to return
+
+        Returns:
+            List of analysis records with operations_found matching filter
+
+        Raises:
+            DatabaseError: If query fails
+        """
+        try:
+            async with get_db_connection() as conn:
+                query = """
+                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                           thinking_budget_tokens, thinking_tokens_used, thinking_content,
+                           operations_found, created_at
+                    FROM analyses
+                    WHERE operations_found = $1
+                    ORDER BY created_at DESC
+                    LIMIT $2
+                """
+
+                rows = await conn.fetch(query, operations_found, limit)
+
+                results = []
+                for row in rows:
+                    results.append({
+                        "id": str(row["id"]),
+                        "report_id": str(row["report_id"]),
+                        "summary": row["summary"],
+                        "trading_signals": json.loads(row["trading_signals"]),
+                        "ai_provider": row["ai_provider"],
+                        "thinking_budget_tokens": row["thinking_budget_tokens"],
+                        "thinking_tokens_used": row["thinking_tokens_used"],
+                        "thinking_content": row["thinking_content"],
+                        "operations_found": row["operations_found"],
+                        "created_at": row["created_at"].isoformat(),
+                    })
+
+                return results
+
+        except Exception as e:
+            logger.error(
+                f"Database query failed: {str(e)}",
+                extra={"error": str(e), "operations_found": operations_found}
             )
             raise DatabaseError(
                 f"Failed to retrieve analyses: {str(e)}",

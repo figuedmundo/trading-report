@@ -24,7 +24,7 @@ class Config:
     trading_portal_password: Optional[str] = os.getenv("TRADING_PORTAL_PASSWORD")
 
     # Service Configuration
-    service_port: int = int(os.getenv("SERVICE_PORT", "8001"))
+    service_port: int = int(os.getenv("SERVICE_PORT", "8002"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     playwright_headless: bool = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
 

@@ -2,6 +2,7 @@
 FastAPI application entry point for AI analysis service.
 
 Sets up routes, middleware, startup/shutdown handlers, and lifespan management.
+Validates configuration and initializes all services on startup.
 """
 
 from fastapi import FastAPI
@@ -25,8 +26,23 @@ async def lifespan(app: FastAPI):
     logger.info("AI Analysis Engine service starting up")
 
     config = Config()
+
+    # Validate configuration - fail fast if required vars missing
     if not validate_config():
-        logger.warning("Configuration validation incomplete - some values may be missing")
+        error_msg = "Configuration validation failed - check environment variables"
+        logger.error(error_msg)
+        raise ConfigurationError(error_msg)
+
+    # Log configuration details
+    logger.info(
+        "Configuration loaded successfully",
+        extra={
+            "llm_model": config.llm_model,
+            "thinking_budget_tokens": config.thinking_budget_tokens,
+            "service_port": config.service_port,
+            "analysis_timeout": config.analysis_timeout,
+        }
+    )
 
     # Initialize database connection pool
     try:
@@ -36,13 +52,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize database pool: {str(e)}")
         raise
 
-    # Initialize analysis service
+    # Initialize analysis service (this will trigger provider detection)
     try:
         analysis_service = AnalysisService()
         set_analysis_service(analysis_service)
-        logger.info("Analysis service initialized")
+        logger.info("Analysis service initialized successfully")
     except ConfigurationError as e:
-        logger.error(f"Configuration error: {e.message}")
+        logger.error(f"Configuration error during service initialization: {e.message}")
         raise
     except Exception as e:
         logger.error(f"Failed to initialize analysis service: {str(e)}")
@@ -60,7 +76,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Analysis Engine",
     version="0.1.0",
-    description="Service for analyzing trading reports and extracting signals using LLM",
+    description="Service for analyzing trading reports and extracting signals using LLM with extended thinking support",
     lifespan=lifespan,
 )
 
