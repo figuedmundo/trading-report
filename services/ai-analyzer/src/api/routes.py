@@ -106,8 +106,12 @@ async def analyze_endpoint(
         if service is None:
             service = AnalysisService()
 
-        # Call analysis service
-        response = await service.analyze(request.report_id, request.raw_extracted_text)
+        # Call analysis service with optional prompt_type override
+        response = await service.analyze(
+            request.report_id,
+            request.raw_extracted_text,
+            prompt_type=request.prompt_type
+        )
 
         logger.info(
             "Analysis completed successfully",

@@ -17,54 +17,52 @@
     },
     {
       "parameters": {
-        "functionCode": "const webhookData = $node['Email Webhook Trigger'].json;\nconst emailBody = webhookData.body.body;\nconst emailFrom = webhookData.body.from;\nconst emailSubject = webhookData.body.subject;\n\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: emailFrom,\n  emailSubject: emailSubject,\n  timestamp: new Date().toISOString()\n};"
+        "jsCode": "const webhookData = $node['Email Webhook Trigger'].json;\nconst emailBody = webhookData.body.body;\nconst emailFrom = webhookData.body.from;\nconst emailSubject = webhookData.body.subject;\n\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: emailFrom,\n  emailSubject: emailSubject,\n  timestamp: new Date().toISOString()\n};"
       },
       "name": "Extract Report URL",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [450, 300],
       "id": "node-extract-url"
     },
     {
       "parameters": {
-        "url": "http://playwright-scraper:8002/api/v1/scrape",
-        "method": "POST",
-        "sendBody": true,
-        "bodyParametersJson": "{\"url\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"username\": \"={{process.env.TRADING_PORTAL_USERNAME}}\", \"password\": \"={{process.env.TRADING_PORTAL_PASSWORD}}\"}",
-        "options": {
-          "timeout": 300000
-        }
+        "jsCode": "const payload = {\n  url: $node['Extract Report URL'].json.reportUrl\n};\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://playwright-scraper:8002/api/v1/scrape',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: payload,\n  json: true\n});\n\nreturn response;"
       },
-      "name": "Playwright Scraper",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [650, 150],
+      "name": "Scrape Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 200],
       "id": "node-scraper"
     },
     {
       "parameters": {
-        "url": "http://ai-analyzer:8000/api/v1/analyze",
-        "method": "POST",
-        "sendBody": true,
-        "bodyParametersJson": "{\"report_id\": \"={{$node['Extract Report URL'].json.reportUrl}}\", \"raw_extracted_text\": \"={{$node['Playwright Scraper'].json.html_content || $node['Playwright Scraper'].json.text_content}}\"}",
-        "options": {
-          "timeout": 60000
-        }
+        "jsCode": "// Extract content from scraper response\nconst scraperResponse = $node['Scrape Report'].json || {};\n\n// Try to extract content from various possible locations\nlet scrapedContent = '';\n\n// First check if there's a nested json object\nif (scraperResponse.json) {\n  scrapedContent = typeof scraperResponse.json === 'string' ? \n                   scraperResponse.json : \n                   JSON.stringify(scraperResponse.json);\n}\n\n// Otherwise try data field\nif (!scrapedContent && scraperResponse.data) {\n  scrapedContent = typeof scraperResponse.data === 'string' ? \n                   scraperResponse.data : \n                   JSON.stringify(scraperResponse.data);\n}\n\n// Try other common field names\nif (!scrapedContent) {\n  scrapedContent = scraperResponse.html_content || \n                   scraperResponse.text_content || \n                   scraperResponse.content || \n                   scraperResponse.body || \n                   scraperResponse.text || \n                   scraperResponse.binary || '';\n}\n\nif (!scrapedContent) {\n  const fields = Object.keys(scraperResponse).join(', ');\n  const preview = JSON.stringify(scraperResponse).substring(0, 300);\n  throw new Error(`No content found. Available fields: ${fields}. Sample: ${preview}`);\n}\n\nconst payload = {\n  report_id: $node['Extract Report URL'].json.reportUrl,\n  raw_extracted_text: scrapedContent.trim(),\n  prompt_type: 'default'\n};\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://ai-analyzer:8000/api/v1/analyze',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: payload,\n  json: true\n});\n\nreturn response;"
       },
-      "name": "AI Analysis",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [650, 450],
+      "name": "Analyze Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 350],
       "id": "node-analyzer"
     },
     {
       "parameters": {
+        "jsCode": "// Check if analysis was successful\nconst analyzeOutput = $node['Analyze Report'].json;\nconst hasAnalysis = analyzeOutput?.raw_analysis && \n                    analyzeOutput.analysis_response !== null && \n                    analyzeOutput.analysis_response !== '';\n\nreturn {\n  success: hasAnalysis,\n  raw_analysis: analyzeOutput?.raw_analysis || null,\n  report_id: analyzeOutput?.report_id || null,\n  api_provider: analyzeOutput?.api_provider || null\n};"
+      },
+      "name": "Check Analysis Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 250],
+      "id": "node-check-analysis-code"
+    },
+    {
+      "parameters": {
         "conditions": {
-          "boolean": [
+          "string": [
             {
-              "value1": "={{$node['AI Analysis'].json.status}}",
-              "condition": "equal",
-              "value2": "success"
+              "value1": "={{ String($node['Check Analysis Success'].json.success) }}",
+              "condition": "equals",
+              "value2": "true"
             }
           ]
         }
@@ -72,47 +70,47 @@
       "name": "Analysis Success Check",
       "type": "n8n-nodes-base.if",
       "typeVersion": 1,
-      "position": [850, 300],
+      "position": [1050, 350],
       "id": "node-check-analysis"
     },
     {
       "parameters": {
-        "url": "http://notification-service:8004/api/v1/notify",
-        "method": "POST",
-        "bodyParametersJson": "{\"recipients\": {\"email\": [\"={{$node['Extract Report URL'].json.emailFrom}}\"]}, \"subject\": \"Trading Report Analysis\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
-        "options": {
-          "timeout": 30000
-        }
+        "jsCode": "const analysis = $node['Analyze Report'].json;\nconst emailFrom = $node['Extract Report URL'].json.emailFrom;\n\nif (!emailFrom) {\n  throw new Error('Email address not provided in webhook');\n}\n\nif (!analysis.analysis_id) {\n  throw new Error('Analysis ID not returned from AI analyzer service');\n}\n\nconst payload = {\n  analysis_id: analysis.analysis_id,\n  report_id: analysis.report_id || 'unknown',\n  channels: ['email'],\n  recipients: {\n    email: String(emailFrom).trim().toLowerCase()\n  },\n  message_type: 'summary'\n};\n\nconsole.log('Send Email payload:', JSON.stringify(payload));\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://notification-service:8004/api/v1/notify',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: payload,\n  json: true\n});\n\nreturn response;"
       },
-      "name": "Send Email Notification",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1050, 200],
+      "name": "Send Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 150],
       "id": "node-email-notify"
     },
     {
       "parameters": {
-        "url": "http://notification-service:8004/api/v1/notify",
-        "method": "POST",
-        "bodyParametersJson": "{\"recipients\": {\"telegram\": [\"={{process.env.TELEGRAM_CHAT_ID}}\"]}, \"subject\": \"Trading Report\", \"content\": \"={{$node['AI Analysis'].json.summary}}\", \"type\": \"report_analysis\"}",
-        "options": {
-          "timeout": 30000
-        }
+        "jsCode": "const analysis = $node['Analyze Report'].json;\nconst telegramChatId = $env.TELEGRAM_CHAT_ID;\n\nif (!telegramChatId) {\n  throw new Error('TELEGRAM_CHAT_ID environment variable not set');\n}\n\nif (!analysis.analysis_id) {\n  throw new Error('Analysis ID not returned from AI analyzer service');\n}\n\nconst payload = {\n  analysis_id: analysis.analysis_id,\n  report_id: analysis.report_id || 'unknown',\n  channels: ['telegram'],\n  recipients: {\n    telegram: String(telegramChatId).trim()\n  },\n  message_type: 'summary'\n};\n\nconsole.log('Send Telegram payload:', JSON.stringify(payload));\n\nconst httpResponse = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://notification-service:8004/api/v1/notify',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: payload,\n  json: true\n});\n\nreturn httpResponse;"
       },
-      "name": "Send Telegram Notification",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1050, 400],
+      "name": "Send Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 350],
       "id": "node-telegram-notify"
     },
     {
       "parameters": {
-        "functionCode": "const auditEntry = {\n  timestamp: new Date().toISOString(),\n  emailFrom: $node['Extract Report URL'].json.emailFrom,\n  reportUrl: $node['Extract Report URL'].json.reportUrl,\n  reportTitle: $node['Playwright Scraper'].json.title,\n  analysisStatus: $node['AI Analysis'].json.status,\n  workflowStatus: 'completed'\n};\n\nreturn auditEntry;"
+        "jsCode": "const reportUrl = $node['Extract Report URL'].json.reportUrl;\nconst telegramChatId = $env.TELEGRAM_CHAT_ID;\n\nif (!telegramChatId) {\n  throw new Error('TELEGRAM_CHAT_ID environment variable not set');\n}\n\n// For failure alerts, use a generated UUID-like ID from the report URL\nconst crypto = require('crypto');\nconst analysisId = crypto.createHash('sha256').update(reportUrl).digest('hex').substring(0, 32);\n\nconst payload = {\n  analysis_id: analysisId,\n  report_id: reportUrl || 'unknown',\n  channels: ['telegram'],\n  recipients: {\n    telegram: String(telegramChatId).trim()\n  },\n  message_type: 'alert'\n};\n\nconsole.log('Send Failure Alert payload:', JSON.stringify(payload));\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://notification-service:8004/api/v1/notify',\n  headers: {\n    'Content-Type': 'application/json'\n  },\n  body: payload,\n  json: true\n});\n\nreturn response;"
       },
-      "name": "Audit Log Entry",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [1250, 300],
+      "name": "Send Failure Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1300, 550],
+      "id": "node-send-failure-alert"
+    },
+    {
+      "parameters": {
+        "jsCode": "const auditEntry = {\n  timestamp: new Date().toISOString(),\n  emailFrom: $node['Extract Report URL'].json.emailFrom,\n  reportUrl: $node['Extract Report URL'].json.reportUrl,\n  analysisStatus: 'completed',\n  workflowStatus: 'success'\n};\n\nreturn auditEntry;"
+      },
+      "name": "Log Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1500, 300],
       "id": "node-audit"
     }
   ],
@@ -121,22 +119,28 @@
       "main": [[{"node": "Extract Report URL", "type": "main", "index": 0}]]
     },
     "Extract Report URL": {
-      "main": [[{"node": "Playwright Scraper", "type": "main", "index": 0}]]
+      "main": [[{"node": "Scrape Report", "type": "main", "index": 0}]]
     },
-    "Playwright Scraper": {
-      "main": [[{"node": "AI Analysis", "type": "main", "index": 0}]]
+    "Scrape Report": {
+      "main": [[{"node": "Analyze Report", "type": "main", "index": 0}]]
     },
-    "AI Analysis": {
+    "Analyze Report": {
+      "main": [[{"node": "Check Analysis Success", "type": "main", "index": 0}]]
+    },
+    "Check Analysis Success": {
       "main": [[{"node": "Analysis Success Check", "type": "main", "index": 0}]]
     },
     "Analysis Success Check": {
-      "main": [[{"node": "Send Email Notification", "type": "main", "index": 0}, {"node": "Send Telegram Notification", "type": "main", "index": 0}], []]
+      "main": [[{"node": "Send Email", "type": "main", "index": 0}, {"node": "Send Telegram", "type": "main", "index": 0}], [{"node": "Send Failure Alert", "type": "main", "index": 0}]]
     },
-    "Send Email Notification": {
-      "main": [[{"node": "Audit Log Entry", "type": "main", "index": 0}]]
+    "Send Email": {
+      "main": [[{"node": "Log Event", "type": "main", "index": 0}]]
     },
-    "Send Telegram Notification": {
-      "main": [[{"node": "Audit Log Entry", "type": "main", "index": 0}]]
+    "Send Telegram": {
+      "main": [[{"node": "Log Event", "type": "main", "index": 0}]]
+    },
+    "Send Failure Alert": {
+      "main": [[{"node": "Log Event", "type": "main", "index": 0}]]
     }
   }
 }

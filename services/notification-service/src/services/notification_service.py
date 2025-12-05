@@ -5,6 +5,7 @@ Coordinates channel instantiation, message rendering, and delivery.
 """
 
 import asyncio
+import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -333,13 +334,27 @@ class NotificationService:
             if analysis:
                 analysis_dict = dict(analysis)
                 # Extract relevant fields
+                confidence_score = analysis_dict.get("confidence_score")
+                
+                # Map key_trades (DB column) to trading_signals (Template variable)
+                # Safely parse JSON if string
+                raw_signals = analysis_dict.get("trading_signals") or analysis_dict.get("key_trades")
+                if isinstance(raw_signals, str):
+                    try:
+                        trading_signals = json.loads(raw_signals)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse trading signals JSON: {raw_signals}")
+                        trading_signals = []
+                else:
+                    trading_signals = raw_signals or []
+                
                 return {
                     "report_title": analysis_dict.get("title", "Trading Analysis"),
                     "report_id": analysis_dict.get("report_id", ""),
                     "summary": analysis_dict.get("summary", ""),
                     "sentiment": analysis_dict.get("sentiment", "neutral"),
-                    "confidence_score": float(analysis_dict.get("confidence_score", 0.0)),
-                    "trading_signals": analysis_dict.get("trading_signals", []),
+                    "confidence_score": float(confidence_score) if confidence_score is not None else 0.0,
+                    "trading_signals": trading_signals,
                     "market_insights": analysis_dict.get("market_insights", []),
                     "symbols_mentioned": analysis_dict.get("symbols_mentioned", []),
                     "price_targets": analysis_dict.get("price_targets", {}),
@@ -348,6 +363,7 @@ class NotificationService:
                     "ai_provider": analysis_dict.get("ai_provider", ""),
                     "win_rate": analysis_dict.get("win_rate"),
                     "profit_loss": analysis_dict.get("profit_loss"),
+                    "raw_analysis": analysis_dict.get("raw_analysis_response", ""),
                 }
         except Exception as e:
             logger.error(f"Failed to build template context from analysis: {str(e)}")

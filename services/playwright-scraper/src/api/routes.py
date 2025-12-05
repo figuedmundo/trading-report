@@ -89,7 +89,14 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
             # Check if login required and perform login
             if await manager.needs_login():
                 logger.info("Login required, performing authentication")
-                await manager.login(request.username, request.password)
+                # Use request credentials if provided, otherwise use environment variables (secure default)
+                username = request.username or config.trading_portal_username
+                password = request.password or config.trading_portal_password
+
+                if not username or not password:
+                    raise CredentialError("No credentials available (set TRADING_PORTAL_USERNAME and TRADING_PORTAL_PASSWORD in .env)")
+
+                await manager.login(username, password)
             else:
                 logger.info("Login not required")
 

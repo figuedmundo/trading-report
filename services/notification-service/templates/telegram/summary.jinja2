@@ -12,5 +12,10 @@
 {% endfor %}
 {% endif %}
 
+{% if raw_analysis %}
+*Full Analysis:*
+{{ raw_analysis }}
+{% endif %}
+
 🔗 Generated: {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}
 📝 _{{ ai_provider|title }} Analysis_

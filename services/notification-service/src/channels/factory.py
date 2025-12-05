@@ -83,6 +83,7 @@ class ChannelFactory:
                         channel_config["TELEGRAM_CHAT_ID"] = config.telegram_chat_id
 
                 # Instantiate channel
+                logger.debug(f"Final config for {channel_name}: {channel_config}")
                 channel = self._instantiate_channel(channel_name, channel_config)
                 self.channels[channel_name] = channel
                 logger.info(f"Channel loaded: {channel_name}")

@@ -12,7 +12,6 @@ from src.llm.provider import get_llm_provider, LLMProvider
 from src.config import get_config
 from src.utils.logger import get_logger
 from src.utils.exceptions import LLMError, InvalidResponseError
-from src.extraction import parse_markdown_sections, extract_trading_operations, extract_section
 
 logger = get_logger(__name__)
 
@@ -25,7 +24,7 @@ class LLMAnalyzer:
         self.provider: LLMProvider = get_llm_provider()
         self.config = get_config()
 
-    async def analyze(self, raw_extracted_text: str, report_id: str) -> Dict[str, Any]:
+    async def analyze(self, raw_extracted_text: str, report_id: str, prompt_type: str = None) -> Dict[str, Any]:
         """
         Analyze extracted text with LLM provider.
 
@@ -34,25 +33,21 @@ class LLMAnalyzer:
 
         Workflow:
         1. Call LLM provider (with timeout)
-        2. Parse markdown sections from response
-        3. Extract trading operations and metadata
-        4. Return complete analysis dict with all metadata
+        2. Return raw response + optional metadata
 
         Args:
             raw_extracted_text: Raw text to analyze
             report_id: Report ID for logging context
+            prompt_type: Optional prompt type override ('default', 'custom', 'options', etc.)
 
         Returns:
             Dict with analysis results including:
-            - summary: Executive summary
-            - market_insights: List of insights
-            - trading_operations: List of trading operations (if found)
-            - operations_found: Boolean indicating if operations were extracted
+            - response: Raw markdown response from LLM
+            - api_provider: Provider name
             - thinking_tokens_used: Tokens consumed by thinking (if applicable)
             - thinking_content: Full reasoning trace (if applicable)
             - input_tokens: Input tokens used
             - output_tokens: Output tokens used
-            - api_provider: Provider name
             Or None on failure
 
         Raises:
@@ -70,9 +65,9 @@ class LLMAnalyzer:
         start_time = time.time()
 
         try:
-            # Implement 30-second timeout on LLM call
+            # Implement 30-second timeout on LLM call (with optional prompt_type override)
             analysis = await asyncio.wait_for(
-                self._call_llm(raw_extracted_text),
+                self._call_llm(raw_extracted_text, prompt_type=prompt_type),
                 timeout=self.config.analysis_timeout
             )
 
@@ -133,30 +128,32 @@ class LLMAnalyzer:
             )
             return None
 
-    async def _call_llm(self, content: str) -> Dict[str, Any]:
+    async def _call_llm(self, content: str, prompt_type: str = None) -> Dict[str, Any]:
         """
-        Call LLM provider and parse response.
+        Call LLM provider and return raw response.
 
         Handles:
-        - Provider API call
+        - Provider API call with optional prompt_type override
         - Response validation
-        - Markdown section parsing
-        - Trading operations extraction
         - Thinking metadata extraction
 
         Args:
             content: Content to analyze
+            prompt_type: Optional prompt type override
 
         Returns:
-            Analysis result dict with all metadata
+            Analysis result dict with raw response and metadata
 
         Raises:
             LLMError: On API failure
             InvalidResponseError: On malformed response
         """
         try:
-            # Call provider's async method with configured prompt type
-            provider_response = await self.provider.analyze(content, prompt_type=self.config.prompt_type)
+            # Use provided prompt_type or fall back to config
+            effective_prompt_type = prompt_type or self.config.prompt_type
+
+            # Call provider's async method
+            provider_response = await self.provider.analyze(content, prompt_type=effective_prompt_type)
 
             # Validate response structure
             if not isinstance(provider_response, dict):
@@ -174,32 +171,8 @@ class LLMAnalyzer:
                         context={"missing_field": field}
                     )
 
-            # Extract markdown sections from response text
+            # Get raw response (markdown as returned by LLM)
             response_text = provider_response.get("response", "")
-            sections = parse_markdown_sections(response_text)
-
-            # Extract summary (required field in parsed response)
-            summary = extract_section(sections, "summary").strip()
-            if not summary:
-                raise InvalidResponseError(
-                    "No summary section found in LLM response",
-                    context={"sections_found": list(sections.keys())}
-                )
-
-            # Extract market insights (optional)
-            market_analysis = extract_section(sections, "market analysis", "market observations")
-            market_insights = [market_analysis] if market_analysis.strip() else []
-
-            # Extract trading operations
-            operations_section = extract_section(
-                sections,
-                "trading operations",
-                "trading signals"
-            )
-            trading_operations, operations_found = extract_trading_operations(
-                operations_section,
-                context_text=response_text
-            )
 
             # Log thinking efficiency if thinking was used
             thinking_tokens_used = provider_response.get("thinking_tokens_used")
@@ -215,18 +188,13 @@ class LLMAnalyzer:
                     }
                 )
 
-            # Build complete analysis response
+            # Return raw response with metadata (no parsing/section extraction)
             return {
-                "summary": summary,
-                "trading_signals": trading_operations,
-                "market_insights": market_insights,
-                "symbols_mentioned": self._extract_symbols(response_text),
-                "price_targets": {},  # Could be enhanced to parse from response
+                "response": response_text,  # Raw markdown as-is
                 "api_provider": provider_response.get("api_provider", "unknown"),
                 "thinking_budget_tokens": getattr(self.config, 'thinking_budget_tokens', 5000),
                 "thinking_tokens_used": thinking_tokens_used,
                 "thinking_content": provider_response.get("thinking"),
-                "operations_found": operations_found,
                 "model_name": self.config.llm_model,
                 "input_tokens": provider_response.get("input_tokens"),
                 "output_tokens": provider_response.get("output_tokens"),
@@ -241,36 +209,3 @@ class LLMAnalyzer:
                 context={"original_error": str(e)}
             )
 
-    def _extract_symbols(self, text: str) -> list:
-        """
-        Extract trading symbols from response text.
-
-        Simple heuristic: looks for common symbol patterns.
-        Could be enhanced with better NLP in future.
-
-        Args:
-            text: Text to search for symbols
-
-        Returns:
-            List of symbols found
-        """
-        import re
-
-        # Pattern for common stock symbols: 1-5 uppercase letters
-        # e.g., AAPL, MSFT, BTC, ETH
-        pattern = r'\b([A-Z]{1,5})\b'
-        matches = re.findall(pattern, text)
-
-        # Filter out common words that aren't symbols
-        common_words = {'THE', 'AND', 'FOR', 'WITH', 'FROM', 'THAT', 'THIS', 'HAVE', 'WILL', 'CAN', 'SHOULD', 'COULD', 'WOULD', 'REPORT', 'ANALYSIS', 'MARKET', 'TRADING', 'PRICE', 'TIME', 'RISK', 'RETURN'}
-        symbols = [m for m in matches if m not in common_words]
-
-        # Return unique symbols, preserving order
-        seen = set()
-        unique_symbols = []
-        for symbol in symbols:
-            if symbol not in seen:
-                seen.add(symbol)
-                unique_symbols.append(symbol)
-
-        return unique_symbols[:20]  # Limit to top 20 symbols

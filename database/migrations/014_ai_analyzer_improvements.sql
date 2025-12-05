@@ -50,9 +50,9 @@ ON analyses(thinking_tokens_used DESC NULLS LAST);
 CREATE INDEX IF NOT EXISTS idx_analyses_ai_provider
 ON analyses(ai_provider);
 
--- Create GIN index on trading_signals JSONB for efficient JSON queries
+-- Create GIN index on key_trades JSONB for efficient JSON queries
 -- Useful for future queries on specific operation fields within JSONB
 CREATE INDEX IF NOT EXISTS idx_analyses_operations_jsonb
-ON analyses USING GIN(trading_signals);
+ON analyses USING GIN(key_trades);
 
 COMMIT;

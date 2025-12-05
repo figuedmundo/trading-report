@@ -60,6 +60,13 @@
             </div>
             {% endfor %}
             {% endif %}
+
+            {% if raw_analysis %}
+            <h3>Full Analysis</h3>
+            <div style="background: #fff; padding: 15px; border: 1px solid #eee; border-radius: 3px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">
+{{ raw_analysis }}
+            </div>
+            {% endif %}
         </div>
 
         <div class="footer">

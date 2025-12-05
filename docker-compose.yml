@@ -46,6 +46,15 @@ services:
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-trading_reports}
       - DB_POSTGRESDB_USER=${N8N_DB_USER:-n8n_user}
       - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+      # Notification service credentials
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+      # SMTP for email notifications
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${EMAIL_PASSWORD}
+      - SMTP_FROM=${EMAIL_FROM}
     volumes:
       - n8n_data:/home/node/.n8n
     ports:
@@ -99,11 +108,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     volumes:
       - ./services/email-webhook/src:/app/src:cached
     deploy:
@@ -172,11 +176,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
     deploy:
       resources:
         limits:
@@ -255,6 +254,9 @@ services:
       - "8004:8004"
     networks:
       - trading-network
+    volumes:
+      - ./services/notification-service/credentials.json:/app/credentials.json
+      - ./services/notification-service/token.pickle:/app/token.pickle
     depends_on:
       postgres:
         condition: service_healthy
@@ -267,6 +269,41 @@ services:
       resources:
         limits:
           memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Gmail Bridge Service - IMAP polling for Gmail inbox
+  gmail-bridge:
+    build: ./services/gmail-bridge
+    restart: unless-stopped
+    container_name: trading-gmail-bridge
+    environment:
+      SERVICE_PORT: 8005
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      IMAP_HOST: ${IMAP_HOST:-imap.gmail.com}
+      IMAP_PORT: ${IMAP_PORT:-993}
+      SMTP_USER: ${GMAIL_ADDRESS}
+      EMAIL_PASSWORD: ${GMAIL_APP_PASSWORD}
+      WEBHOOK_URL: ${GMAIL_WEBHOOK_URL:-http://n8n:5678/webhook/trading-reports}
+      POLL_INTERVAL: ${GMAIL_POLL_INTERVAL:-60}
+      EMAIL_SEARCH_CRITERIA: ${EMAIL_SEARCH_CRITERIA:-UNSEEN}
+      EMAIL_SENDER_FILTER: ${EMAIL_SENDER_FILTER:-}
+      MARK_AS_READ: ${MARK_AS_READ:-false}
+      WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT:-30}
+    ports:
+      - "8005:8005"
+    networks:
+      - trading-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
     logging:
       driver: "json-file"
       options:

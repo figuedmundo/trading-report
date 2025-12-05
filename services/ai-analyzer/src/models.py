@@ -25,6 +25,7 @@ class AnalysisRequest(BaseModel):
 
     report_id: str
     raw_extracted_text: str
+    prompt_type: Optional[str] = None  # Optional: override default prompt with 'default', 'custom', 'options', etc.
 
     @field_validator("report_id")
     @classmethod
@@ -46,22 +47,24 @@ class AnalysisRequest(BaseModel):
 class AnalysisSuccessResponse(BaseModel):
     """Success response body for analysis endpoint."""
 
+    analysis_id: str  # UUID of analysis record in database
     report_id: str
-    api_provider: str  # anthropic, groq, google, or fallback_keyword
-    summary: str
-    trading_signals: List[Dict] = Field(default_factory=list)
-    market_insights: List[str] = Field(default_factory=list)
-    symbols_mentioned: List[str] = Field(default_factory=list)
-    price_targets: Dict[str, Optional[float]] = Field(default_factory=dict)
-    raw_extracted_text: str
+    api_provider: str  # Any provider name: anthropic, groq, gemini, etc.
+
+    # Main AI response (raw markdown as returned by LLM)
+    raw_analysis: str  # Complete markdown response from LLM
+
+    # Optional parsed fields (for backward compatibility / convenience)
+    summary: Optional[str] = Field(default=None, description="Extracted summary if available")
+    trading_signals: List[Dict] = Field(default_factory=list, description="Extracted trading signals if available")
+    market_insights: List[str] = Field(default_factory=list, description="Extracted market insights if available")
+    symbols_mentioned: List[str] = Field(default_factory=list, description="Extracted symbols if available")
+    price_targets: Dict[str, Optional[float]] = Field(default_factory=dict, description="Extracted price targets if available")
 
     # Extended thinking metadata (optional)
     thinking_budget_tokens: Optional[int] = Field(default=None, description="Token budget allocated for extended thinking")
     thinking_tokens_used: Optional[int] = Field(default=None, description="Actual tokens consumed by thinking process")
     thinking_content: Optional[str] = Field(default=None, description="Full reasoning trace from extended thinking")
-
-    # Trading operations metadata
-    operations_found: bool = Field(default=False, description="Whether trading operations were actually extracted")
 
     # Provider and performance metadata
     model_name: Optional[str] = Field(default=None, description="LLM model name used for analysis")

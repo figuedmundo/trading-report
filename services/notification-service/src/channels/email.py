@@ -10,6 +10,7 @@ from typing import Dict, Any
 from src.channels.base import Channel
 from src.utils.logger import get_logger
 from src.channels.smtp_client import SMTPClient
+from src.utils.gmail_client import GmailClient
 
 logger = get_logger(__name__)
 
@@ -19,7 +20,7 @@ class EmailChannel(Channel):
 
     async def send(self, message: str, recipient: str) -> Dict[str, Any]:
         """
-        Send email via SMTP.
+        Send email via SMTP or Gmail API.
 
         Args:
             message: Message to send (HTML content)
@@ -41,25 +42,61 @@ class EmailChannel(Channel):
             }
 
         try:
-            # Send via SMTP
-            smtp_client = SMTPClient(self.config)
-            message_id = await smtp_client.send_message(
-                to_addr=recipient,
-                subject="Trading Analysis Report",
-                html_body=message,
-                text_body=self._html_to_text(message),
-                timeout_seconds=int(self.config.get("smtp_timeout_seconds", "10")),
-            )
+            smtp_host = self.config.get("SMTP_HOST", "").lower()
 
-            latency_ms = int((time.time() - start_time) * 1000)
+            # Mode 1: Mock
+            if smtp_host in ["mock", "console", "localhost"]:
+                logger.info(f"MOCK EMAIL - Would send to: {recipient}")
+                logger.info(f"Subject: Trading Analysis Report")
+                logger.info(f"Body preview: {self._html_to_text(message)[:200]}...")
+                return {
+                    "success": True,
+                    "external_id": "mock-email-id",
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                    "error_code": None,
+                    "error_message": None,
+                }
 
-            return {
-                "success": True,
-                "external_id": message_id,
-                "latency_ms": latency_ms,
-                "error_code": None,
-                "error_message": None,
-            }
+            # Mode 2: Gmail API (Bypass blocked SMTP ports)
+            elif smtp_host == "gmail-api":
+                # Credentials path is expected to be mounted in Docker
+                gmail_client = GmailClient(
+                    credentials_path="/app/credentials.json",
+                    token_path="/app/token.pickle"
+                )
+                message_id = await gmail_client.send_message(
+                    to_addr=recipient,
+                    subject="Trading Analysis Report",
+                    html_body=message,
+                    text_body=self._html_to_text(message)
+                )
+                
+                return {
+                    "success": True,
+                    "external_id": message_id,
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                    "error_code": None,
+                    "error_message": None,
+                }
+
+            # Mode 3: Standard SMTP
+            else:
+                smtp_client = SMTPClient(self.config)
+                message_id = await smtp_client.send_message(
+                    to_addr=recipient,
+                    subject="Trading Analysis Report",
+                    html_body=message,
+                    text_body=self._html_to_text(message),
+                    timeout_seconds=int(self.config.get("smtp_timeout_seconds", "10")),
+                )
+
+                return {
+                    "success": True,
+                    "external_id": message_id,
+                    "latency_ms": int((time.time() - start_time) * 1000),
+                    "error_code": None,
+                    "error_message": None,
+                }
 
         except Exception as e:
             latency_ms = int((time.time() - start_time) * 1000)

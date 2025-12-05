@@ -5,12 +5,15 @@ Handles storing and retrieving analysis results from PostgreSQL.
 """
 
 import json
+import uuid
+import hashlib
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import asyncpg
 from src.db.connection import get_db_connection
 from src.utils.logger import get_logger
 from src.utils.exceptions import DatabaseError
+from src.config import Config
 
 logger = get_logger(__name__)
 
@@ -24,6 +27,7 @@ class AnalysesRepository:
         summary: str,
         trading_signals: List[Dict[str, Any]],
         ai_provider: str,
+        raw_response: Optional[str] = None,
         thinking_budget_tokens: Optional[int] = None,
         thinking_tokens_used: Optional[int] = None,
         thinking_content: Optional[str] = None,
@@ -61,37 +65,53 @@ class AnalysesRepository:
 
         try:
             async with get_db_connection() as conn:
-                # Prepare query with parameterized values to prevent SQL injection
-                query = """
-                    INSERT INTO analyses (
-                        report_id, summary, trading_signals, ai_provider,
-                        thinking_budget_tokens, thinking_tokens_used, thinking_content,
-                        operations_found, created_at
-                    )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    RETURNING id, report_id, summary, trading_signals, ai_provider,
-                              thinking_budget_tokens, thinking_tokens_used, thinking_content,
-                              operations_found, created_at
-                """
-
-                # Convert trading signals to JSON
+                # Convert trading signals to JSON string for key_trades field
                 signals_json = json.dumps(trading_signals)
                 now = datetime.utcnow()
 
-                # Use provided thinking budget or default
-                budget_tokens = thinking_budget_tokens or 5000
+                # Generate UUID from report_id URL using SHA-256 hash (deterministic and consistent)
+                report_uuid = uuid.UUID(hashlib.sha256(report_id.encode()).hexdigest()[:32])
+
+                # Ensure report exists (create if doesn't exist)
+                # This is necessary because analyses has a foreign key to reports
+                check_report_query = "SELECT id FROM reports WHERE id = $1"
+                report_exists = await conn.fetchrow(check_report_query, report_uuid)
+
+                if not report_exists:
+                    # Create a placeholder report for this analysis
+                    create_report_query = """
+                        INSERT INTO reports (id, report_url, email_received_at, status)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (id) DO NOTHING
+                    """
+                    await conn.execute(
+                        create_report_query,
+                        report_uuid,
+                        report_id,  # store the URL as report_url
+                        now,
+                        'pending',
+                    )
+
+                # Insert analysis linked to report
+                # Using raw_analysis_response to store the complete LLM output
+                query = """
+                    INSERT INTO analyses (
+                        report_id, summary, key_trades, ai_provider, raw_analysis_response, model_used, created_at
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id, report_id, summary, key_trades, ai_provider, raw_analysis_response, created_at
+                """
 
                 # Execute query
+                config = Config()
                 row = await conn.fetchrow(
                     query,
-                    report_id,
+                    report_uuid,
                     summary,
                     signals_json,
                     ai_provider,
-                    budget_tokens,
-                    thinking_tokens_used,
-                    thinking_content,
-                    operations_found,
+                    raw_response or "",  # Store raw response in correct column
+                    config.llm_model or "unknown",
                     now,
                 )
 
@@ -106,12 +126,9 @@ class AnalysesRepository:
                     "id": str(row["id"]),
                     "report_id": str(row["report_id"]),
                     "summary": row["summary"],
-                    "trading_signals": json.loads(row["trading_signals"]),
+                    "key_trades": json.loads(row["key_trades"]) if row["key_trades"] else [],
                     "ai_provider": row["ai_provider"],
-                    "thinking_budget_tokens": row["thinking_budget_tokens"],
-                    "thinking_tokens_used": row["thinking_tokens_used"],
-                    "thinking_content": row["thinking_content"],
-                    "operations_found": row["operations_found"],
+                    "raw_analysis_response": row["raw_analysis_response"],
                     "created_at": row["created_at"].isoformat(),
                 }
 
@@ -125,19 +142,6 @@ class AnalysesRepository:
                 )
 
                 return result
-
-        except asyncpg.IntegrityError as e:
-            logger.error(
-                f"Database integrity error: {str(e)}",
-                extra={
-                    "report_id": report_id,
-                    "error": str(e),
-                }
-            )
-            raise DatabaseError(
-                f"Database integrity error: {str(e)}",
-                context={"report_id": report_id, "error": str(e)}
-            )
 
         except Exception as e:
             logger.error(
@@ -170,9 +174,9 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                    SELECT id, report_id, summary, key_trades, ai_provider,
                            thinking_budget_tokens, thinking_tokens_used, thinking_content,
-                           operations_found, created_at
+                           operations_found, raw_analysis_response, created_at
                     FROM analyses
                     WHERE report_id = $1
                     ORDER BY created_at DESC
@@ -189,12 +193,13 @@ class AnalysesRepository:
                     "id": str(row["id"]),
                     "report_id": str(row["report_id"]),
                     "summary": row["summary"],
-                    "trading_signals": json.loads(row["trading_signals"]),
+                    "trading_signals": json.loads(row["key_trades"]) if row["key_trades"] else [],
                     "ai_provider": row["ai_provider"],
                     "thinking_budget_tokens": row["thinking_budget_tokens"],
                     "thinking_tokens_used": row["thinking_tokens_used"],
                     "thinking_content": row["thinking_content"],
                     "operations_found": row["operations_found"],
+                    "raw_analysis_response": row["raw_analysis_response"],
                     "created_at": row["created_at"].isoformat(),
                 }
 

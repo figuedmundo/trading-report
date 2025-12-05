@@ -161,17 +161,28 @@ def grant_table_permissions(cursor):
 
     try:
         log("Granting table permissions to trading_user...")
-        cursor.execute(f"GRANT USAGE ON SCHEMA public TO trading_user")
+        # Essential: Grant CREATE schema permissions
+        cursor.execute(f"GRANT USAGE, CREATE ON SCHEMA public TO trading_user")
+        
         cursor.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO trading_user")
-        cursor.execute(f"GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO trading_user")
+        cursor.execute(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO trading_user")
         cursor.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO trading_user")
         log("Permissions granted to trading_user successfully")
 
         log("Granting table permissions to n8n_user...")
+        # Essential: Grant CREATE schema permissions for n8n to create migrations table
         cursor.execute(f"GRANT ALL PRIVILEGES ON SCHEMA public TO n8n_user")
         cursor.execute(f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO n8n_user")
         cursor.execute(f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO n8n_user")
+        cursor.execute(f"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO n8n_user")
         log("Permissions granted to n8n_user successfully")
+
+        # Disable RLS on notifications_delivery_log if it exists
+        try:
+            cursor.execute("ALTER TABLE notifications_delivery_log DISABLE ROW LEVEL SECURITY")
+            log("Disabled RLS on notifications_delivery_log")
+        except Exception as e:
+            log(f"Could not disable RLS (table might not exist yet): {e}", "WARNING")
 
     except Exception as e:
         log(f"Failed to grant table permissions: {e}", "ERROR")
