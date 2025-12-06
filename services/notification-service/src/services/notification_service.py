@@ -6,6 +6,7 @@ Coordinates channel instantiation, message rendering, and delivery.
 
 import asyncio
 import json
+import markdown
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -90,6 +91,10 @@ class NotificationService:
                 "report_url": "",
                 "timestamp": datetime.utcnow(),
             }
+
+        # Override with request context_data if present
+        if request.context_data:
+            context.update(request.context_data)
 
         # Create notification records and send via channels
         notification_ids = []
@@ -337,16 +342,27 @@ class NotificationService:
                 confidence_score = analysis_dict.get("confidence_score")
                 
                 # Map key_trades (DB column) to trading_signals (Template variable)
-                # Safely parse JSON if string
                 raw_signals = analysis_dict.get("trading_signals") or analysis_dict.get("key_trades")
+                
+                # Safely parse JSON if string
                 if isinstance(raw_signals, str):
                     try:
                         trading_signals = json.loads(raw_signals)
                     except json.JSONDecodeError:
                         logger.warning(f"Failed to parse trading signals JSON: {raw_signals}")
                         trading_signals = []
+                elif isinstance(raw_signals, list):
+                    trading_signals = raw_signals
                 else:
-                    trading_signals = raw_signals or []
+                    trading_signals = []
+
+                # Convert raw markdown to HTML for email rendering
+                raw_markdown = analysis_dict.get("raw_analysis_response", "") or ""
+                try:
+                    html_analysis = markdown.markdown(raw_markdown, extensions=['tables', 'fenced_code'])
+                except Exception as e:
+                    logger.warning(f"Failed to convert markdown to HTML: {e}")
+                    html_analysis = raw_markdown.replace("\n", "<br>")
                 
                 return {
                     "report_title": analysis_dict.get("title", "Trading Analysis"),
@@ -361,9 +377,12 @@ class NotificationService:
                     "report_url": "",
                     "timestamp": datetime.utcnow(),
                     "ai_provider": analysis_dict.get("ai_provider", ""),
+                    "model_used": analysis_dict.get("model_used", "unknown"),
+                    "prompt_type": analysis_dict.get("prompt_type", "default"),
                     "win_rate": analysis_dict.get("win_rate"),
                     "profit_loss": analysis_dict.get("profit_loss"),
-                    "raw_analysis": analysis_dict.get("raw_analysis_response", ""),
+                    "raw_analysis": raw_markdown,
+                    "html_analysis": html_analysis,
                 }
         except Exception as e:
             logger.error(f"Failed to build template context from analysis: {str(e)}")
@@ -382,6 +401,8 @@ class NotificationService:
             "report_url": "",
             "timestamp": datetime.utcnow(),
             "ai_provider": "",
+            "model_used": "unknown",
+            "prompt_type": "default",
             "win_rate": None,
             "profit_loss": None,
         }

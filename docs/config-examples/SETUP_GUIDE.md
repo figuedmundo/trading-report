@@ -12,6 +12,8 @@ This guide walks you through configuring each component of the Trading Report sy
 
 ## Step 1: AI Provider Setup
 
+**Note**: The settings below define the **default** provider. You can override this per-request using API headers (e.g., `X-AI-Provider`).
+
 ### Option A: Anthropic Claude (Recommended)
 
 1. Visit https://console.anthropic.com/

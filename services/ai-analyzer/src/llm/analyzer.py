@@ -24,7 +24,7 @@ class LLMAnalyzer:
         self.provider: LLMProvider = get_llm_provider()
         self.config = get_config()
 
-    async def analyze(self, raw_extracted_text: str, report_id: str, prompt_type: str = None) -> Dict[str, Any]:
+    async def analyze(self, raw_extracted_text: str, report_id: str, prompt_type: str = None, ai_provider: str = None, model_name: str = None) -> Dict[str, Any]:
         """
         Analyze extracted text with LLM provider.
 
@@ -39,6 +39,8 @@ class LLMAnalyzer:
             raw_extracted_text: Raw text to analyze
             report_id: Report ID for logging context
             prompt_type: Optional prompt type override ('default', 'custom', 'options', etc.)
+            ai_provider: Optional provider name override
+            model_name: Optional model name override
 
         Returns:
             Dict with analysis results including:
@@ -53,12 +55,25 @@ class LLMAnalyzer:
         Raises:
             LLMError: On LLM API failure (will be caught and logged)
         """
+        # Determine effective provider
+        effective_provider = self.provider
+        if ai_provider or model_name:
+            try:
+                effective_provider = get_llm_provider(ai_provider=ai_provider, model_name=model_name)
+            except Exception as e:
+                logger.error(
+                    f"Failed to initialize dynamic provider: {str(e)}",
+                    extra={"report_id": report_id, "ai_provider": ai_provider, "model_name": model_name}
+                )
+                return None
+
         logger.info(
             "Starting LLM analysis",
             extra={
                 "report_id": report_id,
                 "content_length": len(raw_extracted_text),
-                "provider": self.provider.get_provider_name(),
+                "provider": effective_provider.get_provider_name(),
+                "model": getattr(effective_provider, 'model_name', 'unknown')
             }
         )
 
@@ -67,7 +82,7 @@ class LLMAnalyzer:
         try:
             # Implement 30-second timeout on LLM call (with optional prompt_type override)
             analysis = await asyncio.wait_for(
-                self._call_llm(raw_extracted_text, prompt_type=prompt_type),
+                self._call_llm(raw_extracted_text, prompt_type=prompt_type, provider=effective_provider),
                 timeout=self.config.analysis_timeout
             )
 
@@ -77,7 +92,7 @@ class LLMAnalyzer:
                 "LLM analysis completed successfully",
                 extra={
                     "report_id": report_id,
-                    "provider": self.provider.get_provider_name(),
+                    "provider": effective_provider.get_provider_name(),
                     "latency_ms": latency_ms,
                     "thinking_tokens_used": analysis.get("thinking_tokens_used"),
                     "operations_found": analysis.get("operations_found"),
@@ -90,7 +105,7 @@ class LLMAnalyzer:
                 "LLM analysis timed out - fallback extraction will be used",
                 extra={
                     "report_id": report_id,
-                    "provider": self.provider.get_provider_name(),
+                    "provider": effective_provider.get_provider_name(),
                     "timeout_seconds": self.config.analysis_timeout,
                 }
             )
@@ -101,7 +116,7 @@ class LLMAnalyzer:
                 f"LLM returned invalid response - fallback extraction will be used: {e.message}",
                 extra={
                     "report_id": report_id,
-                    "provider": self.provider.get_provider_name(),
+                    "provider": effective_provider.get_provider_name(),
                     "error_code": e.error_code,
                 }
             )
@@ -112,7 +127,7 @@ class LLMAnalyzer:
                 f"LLM API error - fallback extraction will be used: {e.message}",
                 extra={
                     "report_id": report_id,
-                    "provider": self.provider.get_provider_name(),
+                    "provider": effective_provider.get_provider_name(),
                     "error_code": e.error_code,
                 }
             )
@@ -123,12 +138,12 @@ class LLMAnalyzer:
                 f"Unexpected LLM error - fallback extraction will be used: {str(e)}",
                 extra={
                     "report_id": report_id,
-                    "provider": self.provider.get_provider_name(),
+                    "provider": effective_provider.get_provider_name(),
                 }
             )
             return None
 
-    async def _call_llm(self, content: str, prompt_type: str = None) -> Dict[str, Any]:
+    async def _call_llm(self, content: str, prompt_type: str = None, provider: LLMProvider = None) -> Dict[str, Any]:
         """
         Call LLM provider and return raw response.
 
@@ -140,6 +155,7 @@ class LLMAnalyzer:
         Args:
             content: Content to analyze
             prompt_type: Optional prompt type override
+            provider: Optional LLMProvider instance to use (overrides self.provider)
 
         Returns:
             Analysis result dict with raw response and metadata
@@ -149,11 +165,13 @@ class LLMAnalyzer:
             InvalidResponseError: On malformed response
         """
         try:
+            effective_provider = provider or self.provider
+
             # Use provided prompt_type or fall back to config
             effective_prompt_type = prompt_type or self.config.prompt_type
 
             # Call provider's async method
-            provider_response = await self.provider.analyze(content, prompt_type=effective_prompt_type)
+            provider_response = await effective_provider.analyze(content, prompt_type=effective_prompt_type)
 
             # Validate response structure
             if not isinstance(provider_response, dict):
@@ -195,7 +213,7 @@ class LLMAnalyzer:
                 "thinking_budget_tokens": getattr(self.config, 'thinking_budget_tokens', 5000),
                 "thinking_tokens_used": thinking_tokens_used,
                 "thinking_content": provider_response.get("thinking"),
-                "model_name": self.config.llm_model,
+                "model_name": getattr(effective_provider, 'model_name', self.config.llm_model),
                 "input_tokens": provider_response.get("input_tokens"),
                 "output_tokens": provider_response.get("output_tokens"),
             }

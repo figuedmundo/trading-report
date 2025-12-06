@@ -22,6 +22,7 @@ class Config:
 
     # Webhook Configuration
     WEBHOOK_URL = os.getenv("WEBHOOK_URL", "http://localhost:5678/webhook/trading-reports")
+    WEBHOOK_SECRET_KEY = os.getenv("WEBHOOK_SECRET_KEY")  # Shared secret for signature
     WEBHOOK_TIMEOUT = int(os.getenv("WEBHOOK_TIMEOUT", "30"))  # seconds
 
     # Polling Configuration
@@ -50,3 +51,5 @@ class Config:
             logger.warning("EMAIL_PASSWORD not set - Gmail polling will not work until configured")
         if not cls.WEBHOOK_URL:
             logger.warning("WEBHOOK_URL not set - emails will not be forwarded")
+        if not cls.WEBHOOK_SECRET_KEY:
+            logger.warning("WEBHOOK_SECRET_KEY not set - webhook requests will lack signature and fail")

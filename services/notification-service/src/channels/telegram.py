@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from src.channels.base import Channel
 from src.utils.logger import get_logger
 from src.channels.telegram_client import TelegramClient
+import telegramify_markdown
 
 logger = get_logger(__name__)
 
@@ -40,8 +41,14 @@ class TelegramChannel(Channel):
             }
 
         try:
+            # Convert standard Markdown to Telegram MarkdownV2
+            # This handles escaping and formatting automatically
+            markdown_v2_message = telegramify_markdown.markdownify(message)
+
             # Split message if exceeds 4096 character limit
-            messages_to_send = self._split_message(message, 4096)
+            # Note: Splitting MarkdownV2 is tricky; telegramify might help, or we rely on basic splitting
+            # Ideally, the summary should fit.
+            messages_to_send = self._split_message(markdown_v2_message, 4096)
 
             telegram_client = TelegramClient(self.config)
             message_ids = []
@@ -50,7 +57,7 @@ class TelegramChannel(Channel):
                 msg_id = await telegram_client.send_message(
                     chat_id=recipient,
                     text=chunk,
-                    parse_mode="Markdown",
+                    parse_mode="MarkdownV2",
                     timeout_seconds=int(self.config.get("api_timeout_seconds", "5")),
                 )
                 message_ids.append(msg_id)

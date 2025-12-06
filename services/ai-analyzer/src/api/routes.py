@@ -6,9 +6,9 @@ Defines POST /api/v1/analyze and GET /health endpoints.
 
 import uuid
 from datetime import datetime, timezone
-from typing import Union
+from typing import Union, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import ValidationError
 
 from src.models import (
@@ -58,12 +58,18 @@ def _create_metadata(request_id: str, start_time: datetime) -> dict:
 @router.post("/api/v1/analyze", response_model=Union[AnalysisSuccessResponse, AnalysisErrorResponse])
 async def analyze_endpoint(
     request: AnalysisRequest,
+    x_ai_provider: Optional[str] = Header(None, alias="X-AI-Provider"),
+    x_llm_model: Optional[str] = Header(None, alias="X-LLM-Model"),
+    x_prompt_name: Optional[str] = Header(None, alias="X-Prompt-Name"),
 ) -> Union[AnalysisSuccessResponse, AnalysisErrorResponse]:
     """
     Analyze trading report and extract signals.
 
     Args:
         request: AnalysisRequest with report_id and raw_extracted_text
+        x_ai_provider: Optional header to override AI provider
+        x_llm_model: Optional header to override LLM model
+        x_prompt_name: Optional header to override prompt type
 
     Returns:
         AnalysisSuccessResponse or AnalysisErrorResponse
@@ -76,6 +82,11 @@ async def analyze_endpoint(
         extra={
             "request_id": request_id,
             "report_id": request.report_id,
+            "headers": {
+                "ai_provider": x_ai_provider,
+                "llm_model": x_llm_model,
+                "prompt_name": x_prompt_name,
+            }
         }
     )
 
@@ -106,11 +117,16 @@ async def analyze_endpoint(
         if service is None:
             service = AnalysisService()
 
-        # Call analysis service with optional prompt_type override
+        # Determine effective prompt type: Header overrides Body
+        effective_prompt_type = x_prompt_name if x_prompt_name else request.prompt_type
+
+        # Call analysis service with optional overrides
         response = await service.analyze(
             request.report_id,
             request.raw_extracted_text,
-            prompt_type=request.prompt_type
+            prompt_type=effective_prompt_type,
+            ai_provider=x_ai_provider,
+            model_name=x_llm_model
         )
 
         logger.info(

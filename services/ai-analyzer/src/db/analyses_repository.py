@@ -32,6 +32,8 @@ class AnalysesRepository:
         thinking_tokens_used: Optional[int] = None,
         thinking_content: Optional[str] = None,
         operations_found: bool = False,
+        model_used: Optional[str] = None,
+        prompt_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create and store analysis in database.
@@ -41,10 +43,13 @@ class AnalysesRepository:
             summary: Executive summary text
             trading_signals: List of trading signal dicts
             ai_provider: Name of AI provider used
+            raw_response: Raw markdown response from LLM
             thinking_budget_tokens: Token budget allocated for thinking
             thinking_tokens_used: Actual tokens consumed by thinking
             thinking_content: Full reasoning trace from thinking
             operations_found: Boolean indicating if trading operations were extracted
+            model_used: Specific AI model used
+            prompt_type: Type of prompt template used
 
         Returns:
             Created analysis record as dict
@@ -59,7 +64,8 @@ class AnalysesRepository:
                 "provider": ai_provider,
                 "signal_count": len(trading_signals),
                 "operations_found": operations_found,
-                "thinking_tokens_used": thinking_tokens_used,
+                "model_used": model_used,
+                "prompt_type": prompt_type,
             }
         )
 
@@ -73,12 +79,10 @@ class AnalysesRepository:
                 report_uuid = uuid.UUID(hashlib.sha256(report_id.encode()).hexdigest()[:32])
 
                 # Ensure report exists (create if doesn't exist)
-                # This is necessary because analyses has a foreign key to reports
                 check_report_query = "SELECT id FROM reports WHERE id = $1"
                 report_exists = await conn.fetchrow(check_report_query, report_uuid)
 
                 if not report_exists:
-                    # Create a placeholder report for this analysis
                     create_report_query = """
                         INSERT INTO reports (id, report_url, email_received_at, status)
                         VALUES ($1, $2, $3, $4)
@@ -87,32 +91,42 @@ class AnalysesRepository:
                     await conn.execute(
                         create_report_query,
                         report_uuid,
-                        report_id,  # store the URL as report_url
+                        report_id,
                         now,
                         'pending',
                     )
 
                 # Insert analysis linked to report
-                # Using raw_analysis_response to store the complete LLM output
                 query = """
                     INSERT INTO analyses (
-                        report_id, summary, key_trades, ai_provider, raw_analysis_response, model_used, created_at
+                        report_id, summary, key_trades, ai_provider, raw_analysis_response, 
+                        model_used, prompt_type, created_at,
+                        thinking_budget_tokens, thinking_tokens_used, thinking_content, operations_found
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    RETURNING id, report_id, summary, key_trades, ai_provider, raw_analysis_response, created_at
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id, report_id, summary, key_trades, ai_provider, raw_analysis_response, 
+                              model_used, prompt_type, created_at
                 """
 
-                # Execute query
                 config = Config()
+                # Use provided model_used or fall back to config
+                effective_model = model_used or config.llm_model or "unknown"
+                effective_prompt = prompt_type or "default"
+
                 row = await conn.fetchrow(
                     query,
                     report_uuid,
                     summary,
                     signals_json,
                     ai_provider,
-                    raw_response or "",  # Store raw response in correct column
-                    config.llm_model or "unknown",
+                    raw_response or "",
+                    effective_model,
+                    effective_prompt,
                     now,
+                    thinking_budget_tokens or 5000,
+                    thinking_tokens_used,
+                    thinking_content,
+                    operations_found,
                 )
 
                 if not row:
@@ -129,6 +143,8 @@ class AnalysesRepository:
                     "key_trades": json.loads(row["key_trades"]) if row["key_trades"] else [],
                     "ai_provider": row["ai_provider"],
                     "raw_analysis_response": row["raw_analysis_response"],
+                    "model_used": row["model_used"],
+                    "prompt_type": row["prompt_type"],
                     "created_at": row["created_at"].isoformat(),
                 }
 

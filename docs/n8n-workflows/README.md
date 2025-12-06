@@ -110,6 +110,14 @@ WEBHOOK_SECRET_KEY=your_secret_key
 AI_PROVIDER=anthropic
 ```
 
+### Dynamic AI Configuration (Advanced)
+
+You can dynamically switch AI providers or models within the workflow (e.g., based on email subject keywords).
+
+In the **Analyze Report** (HTTP Request) node, add headers:
+- `X-AI-Provider`: `{{ $json.emailSubject.includes('Use Groq') ? 'groq' : 'anthropic' }}`
+- `X-LLM-Model`: `gemini-2.0-flash`
+
 ### Webhook Paths
 
 Each workflow's webhook trigger has a path. When importing, note:
@@ -163,7 +171,7 @@ In "Send Email Notification" node, modify the recipients:
 ```javascript
 // Change from:
 "recipients": {
-  "email": ["{{$node[\"Extract Report URL\"].json.emailFrom}}"]
+  "email": ["{{$node[\"Extract Report URL\"]..json.emailFrom}}"]
 }
 
 // To:

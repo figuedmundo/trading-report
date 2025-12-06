@@ -97,6 +97,15 @@ Located in: [`docs/config-examples/`](docs/config-examples/)
   10. N8N persistence
 - **When to use**: Need to customize Docker Compose for your environment
 
+#### [`UBUNTU_HOMELAB_DEPLOYMENT.md`](docs/config-examples/UBUNTU_HOMELAB_DEPLOYMENT.md) - Ubuntu Home Lab Deployment
+- **Purpose**: Step-by-step guide for deploying on a fresh Ubuntu Server
+- **Covers**:
+  - Server preparation (Docker, Firewall)
+  - Installation and Configuration
+  - Production deployment
+  - Secure external access (Cloudflare Tunnel/Nginx)
+- **When to use**: Deploying to a dedicated server or VM in a home lab environment
+
 #### [`CONFIGURATION_CHECKLIST.md`](docs/config-examples/CONFIGURATION_CHECKLIST.md) - Complete Verification Checklist
 - **Purpose**: 18-phase comprehensive checklist to verify system is production-ready
 - **Covers**:

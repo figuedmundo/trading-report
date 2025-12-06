@@ -3,6 +3,9 @@
 import asyncio
 import re
 import logging
+import hmac
+import hashlib
+import json
 from email.parser import BytesParser
 from email import policy
 from typing import Optional, Dict, Any
@@ -131,12 +134,34 @@ class GmailPoller:
                 received_at=datetime.utcnow(),
             )
 
+            # Prepare headers and body
+            payload_dict = payload.model_dump()
+            # Using json.dumps with default separators to match standard JSON serialization
+            # Note: Pydantic's model_dump_json() could also be used but we need consistent bytes for signing
+            json_body = json.dumps(payload_dict).encode("utf-8")
+            
+            headers = {
+                "Content-Type": "application/json"
+            }
+
+            # Add signature if secret is configured
+            if self.config.WEBHOOK_SECRET_KEY:
+                signature = hmac.new(
+                    self.config.WEBHOOK_SECRET_KEY.encode("utf-8"),
+                    json_body,
+                    hashlib.sha256
+                ).hexdigest()
+                headers["X-Signature"] = signature
+            else:
+                logger.warning("WEBHOOK_SECRET_KEY not configured - sending request without signature")
+
             # Send to webhook with retry logic
             async with aiohttp.ClientSession() as session:
                 try:
                     async with session.post(
                         self.config.WEBHOOK_URL,
-                        json=payload.model_dump(),
+                        data=json_body,
+                        headers=headers,
                         timeout=aiohttp.ClientTimeout(total=self.config.WEBHOOK_TIMEOUT),
                     ) as response:
                         if response.status in (200, 201, 202):

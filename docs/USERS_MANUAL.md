@@ -163,7 +163,7 @@ open http://localhost:5678
 |----------|----------|-------------|---------|
 | `ANTHROPIC_API_KEY` | If using Claude | Claude API key | `sk-ant-...` |
 | `GROQ_API_KEY` | If using Groq | Groq API key | `gsk_...` |
-| `AI_MODEL` | No | Model name (default: claude-3-sonnet) | `gpt-4` |
+| `AI_MODEL` | No | **Default** Model name (can be overridden via headers) | `claude-3-sonnet` |
 
 #### Email Notifications
 
@@ -519,12 +519,32 @@ docker-compose logs | grep ERROR
 # 3. Click "Execute"
 # 4. Provide test data
 
-# Via API:
+# Via API (Basic):
 curl -X POST http://localhost:8000/api/v1/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "content": "Your trading report content...",
-    "source": "manual_test"
+    "report_id": "test-123",
+    "raw_extracted_text": "Your trading report content..."
+  }'
+```
+
+### Advanced Analysis Options
+
+You can override the default AI settings per request using HTTP headers:
+
+- **`X-AI-Provider`**: Switch providers (e.g., `groq`, `anthropic`, `google`)
+- **`X-LLM-Model`**: Use a specific model version (e.g., `gemini-2.0-flash`, `mixtral-8x7b-32768`)
+- **`X-Prompt-Name`**: Select a different prompt strategy (e.g., `conservative`, `aggressive`)
+
+**Example: Testing with a different model:**
+```bash
+curl -X POST http://localhost:8000/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -H "X-AI-Provider: google" \
+  -H "X-LLM-Model: gemini-2.0-flash" \
+  -d '{
+    "report_id": "test-123",
+    "raw_extracted_text": "Report content..."
   }'
 ```
 

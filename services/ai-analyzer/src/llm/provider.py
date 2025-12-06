@@ -372,15 +372,19 @@ def get_provider_from_model(model_name: str) -> Tuple[Type[LLMProvider], str]:
     return provider_class, prefix
 
 
-def get_llm_provider() -> LLMProvider:
+def get_llm_provider(ai_provider: str = None, model_name: str = None) -> LLMProvider:
     """
-    Factory function to get LLM provider based on environment variables.
+    Factory function to get LLM provider based on configuration or overrides.
 
     Supports two modes:
     1. Auto-detection: Uses LLM_MODEL prefix to detect provider (recommended)
     2. Explicit: Uses AI_PROVIDER to override detection (optional)
 
-    Then instantiates with thinking budget and model name.
+    Can be overridden by passing ai_provider and/or model_name arguments.
+
+    Args:
+        ai_provider: Optional override for provider name (anthropic, groq, google)
+        model_name: Optional override for model name
 
     Returns:
         Configured LLMProvider instance
@@ -392,39 +396,76 @@ def get_llm_provider() -> LLMProvider:
 
     config = get_config()
 
-    # Validate LLM_MODEL is set
-    if not config.llm_model:
+    # Default models for each provider (fallback if only provider is specified)
+    default_models = {
+        'anthropic': 'claude-3-5-sonnet-20241022',
+        'groq': 'mixtral-8x7b-32768',
+        'google': 'gemini-2.0-flash',
+    }
+
+    # Determine effective configuration
+    effective_provider_name = (ai_provider or config.ai_provider or "").lower()
+    effective_model_name = model_name or config.llm_model
+
+    # If provider is switched but model isn't, try to set a safe default model for that provider
+    # ONLY if the current model doesn't match the new provider
+    if ai_provider and not model_name:
+        # Check if current configured model is compatible with new provider
+        try:
+            # fast check if model prefix matches new provider
+            _, detected_prefix = get_provider_from_model(effective_model_name)
+            provider_map = {
+                'anthropic': 'claude',
+                'groq': 'mixtral',  # incomplete map but handled in get_provider_from_model
+                'google': 'gemini'
+            }
+            # This check is complex because get_provider_from_model handles prefixes
+            # Simpler: if explicitly switching provider, use that provider's default model
+            # unless the current model is KNOWN to be compatible.
+            # To be safe: if ai_provider is explicit, and no model_name given, use default for that provider.
+            if effective_provider_name in default_models:
+                effective_model_name = default_models[effective_provider_name]
+        except Exception:
+            # If current model name is invalid for some reason, use default
+            if effective_provider_name in default_models:
+                effective_model_name = default_models[effective_provider_name]
+
+    # Validate LLM_MODEL is set (either via arg, config, or default logic)
+    if not effective_model_name:
         raise ConfigurationError(
-            "LLM_MODEL environment variable not set. "
-            "Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, gemini-2.0-flash",
+            "LLM_MODEL not set and could not be inferred.",
             context={}
         )
 
-    # Determine provider: explicit or auto-detect
-    if config.ai_provider:
+    # Determine provider class
+    if effective_provider_name:
         # Explicit provider override
-        provider_name = config.ai_provider.lower()
         provider_map = {
             'anthropic': (AnthropicProvider, 'ANTHROPIC_API_KEY'),
             'groq': (GroqProvider, 'GROQ_API_KEY'),
             'google': (GoogleProvider, 'GOOGLE_API_KEY'),
         }
 
-        if provider_name not in provider_map:
-            raise ConfigurationError(
-                f"Unknown AI_PROVIDER: {provider_name}. "
-                f"Options: anthropic, groq, google",
-                context={"ai_provider": provider_name}
+        if effective_provider_name not in provider_map:
+            # If we have a model name, try to auto-detect from it as fallback
+            try:
+                provider_class, provider_name = get_provider_from_model(effective_model_name)
+            except ConfigurationError:
+                raise ConfigurationError(
+                    f"Unknown AI_PROVIDER: {effective_provider_name}. "
+                    f"Options: anthropic, groq, google",
+                    context={"ai_provider": effective_provider_name}
+                )
+        else:
+            provider_class, api_key_var = provider_map[effective_provider_name]
+            provider_name = effective_provider_name
+            logger.info(
+                "Using explicitly configured provider",
+                extra={"provider": provider_name, "model": effective_model_name}
             )
-
-        provider_class, api_key_var = provider_map[provider_name]
-        logger.info(
-            "Using explicitly configured provider",
-            extra={"provider": provider_name, "model": config.llm_model}
-        )
     else:
         # Auto-detect from model name
-        provider_class, provider_name = get_provider_from_model(config.llm_model)
+        provider_class, provider_name = get_provider_from_model(effective_model_name)
 
     # Get API key for detected/explicit provider
     api_key_map = {
@@ -439,17 +480,19 @@ def get_llm_provider() -> LLMProvider:
         raise ConfigurationError(
             f"API key required for {provider_name} provider. "
             f"Check environment variables and LLM_MODEL setting",
-            context={"provider": provider_name, "model_name": config.llm_model}
+            context={"provider": provider_name, "model_name": effective_model_name}
         )
 
     # Instantiate provider with thinking budget and model name
-    provider = provider_class(api_key, thinking_budget_tokens=config.thinking_budget_tokens, model_name=config.llm_model)
+    # Use config thinking budget, unless we want to override that too?
+    # For now, keep thinking budget from config as it's a safety setting.
+    provider = provider_class(api_key, thinking_budget_tokens=config.thinking_budget_tokens, model_name=effective_model_name)
 
     logger.info(
         "LLM provider initialized",
         extra={
             "provider": provider_name,
-            "model": config.llm_model,
+            "model": effective_model_name,
             "thinking_budget_tokens": config.thinking_budget_tokens
         }
     )

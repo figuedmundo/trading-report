@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.production
+.env.example
 
 # Python
 __pycache__/
@@ -59,3 +60,7 @@ test-results/
 
 .claude
 .gemini
+
+# Secrets
+token.pickle
+credentials.json

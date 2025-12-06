@@ -27,42 +27,10 @@
         </div>
 
         <div class="content">
-            <h2>{{ report_title }}</h2>
-
-            <div style="margin: 15px 0;">
-                <div class="metric">
-                    <strong>Sentiment:</strong> <span style="color: #2c3e50;">{{ sentiment|title }}</span>
-                </div>
-                <div class="metric">
-                    <strong>Confidence:</strong> <span style="color: #2c3e50;">{{ (confidence_score * 100)|int }}%</span>
-                </div>
-                {% if win_rate %}
-                <div class="metric">
-                    <strong>Win Rate:</strong> <span style="color: #2c3e50;">{{ win_rate|round(1) }}%</span>
-                </div>
-                {% endif %}
-            </div>
-
-            <div class="summary">
-                {{ summary }}
-            </div>
-
-            {% if trading_signals %}
-            <h3>Trading Signals</h3>
-            {% for signal in trading_signals %}
-            <div class="signal {{ signal.action|lower }}">
-                <div class="action">{{ signal.action }} {{ signal.symbol }}</div>
-                <div class="details">
-                    {% if signal.entry_price %}<strong>Entry:</strong> ${{ signal.entry_price|round(2) }}<br/>{% endif %}
-                    {% if signal.target_price %}<strong>Target:</strong> ${{ signal.target_price|round(2) }}<br/>{% endif %}
-                    <strong>Confidence:</strong> {{ (signal.confidence_score * 100)|int }}%
-                </div>
-            </div>
-            {% endfor %}
-            {% endif %}
-
-            {% if raw_analysis %}
-            <h3>Full Analysis</h3>
+            {% if html_analysis %}
+            {{ html_analysis | safe }}
+            {% elif raw_analysis %}
+            <h3>Full Analysis (Raw)</h3>
             <div style="background: #fff; padding: 15px; border: 1px solid #eee; border-radius: 3px; white-space: pre-wrap; font-family: monospace; font-size: 13px;">
 {{ raw_analysis }}
             </div>
@@ -71,7 +39,7 @@
 
         <div class="footer">
             <p><strong>Generated:</strong> {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}</p>
-            <p><strong>Analysis Provider:</strong> {{ ai_provider|title }}</p>
+            <p><strong>Analysis Provider:</strong> {{ ai_provider|title }} | <strong>Model:</strong> {{ model_used }} | <strong>Prompt:</strong> {{ prompt_type }}</p>
             {% if report_url %}<p><a href="{{ report_url }}">View Full Report</a></p>{% endif %}
         </div>
     </div>

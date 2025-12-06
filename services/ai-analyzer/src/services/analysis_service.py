@@ -26,7 +26,7 @@ class AnalysisService:
         self.confidence_scorer = ConfidenceScorer()
         self.analyses_repository = AnalysesRepository()
 
-    async def analyze(self, report_id: str, raw_extracted_text: str, prompt_type: str = None) -> AnalysisSuccessResponse:
+    async def analyze(self, report_id: str, raw_extracted_text: str, prompt_type: str = None, ai_provider: str = None, model_name: str = None) -> AnalysisSuccessResponse:
         """
         Analyze trading report with LLM and fallback extraction.
 
@@ -41,6 +41,8 @@ class AnalysisService:
             report_id: Report UUID
             raw_extracted_text: Raw text to analyze
             prompt_type: Optional prompt type override ('default', 'custom', 'options', etc.)
+            ai_provider: Optional provider override
+            model_name: Optional model name override
 
         Returns:
             AnalysisSuccessResponse with analysis results
@@ -55,11 +57,20 @@ class AnalysisService:
             extra={
                 "report_id": report_id,
                 "content_length": len(raw_extracted_text),
+                "prompt_type": prompt_type,
+                "ai_provider": ai_provider,
+                "model_name": model_name,
             }
         )
 
         # Try LLM analysis first (with optional prompt_type override)
-        analysis_result = await self.llm_analyzer.analyze(raw_extracted_text, report_id, prompt_type=prompt_type)
+        analysis_result = await self.llm_analyzer.analyze(
+            raw_extracted_text, 
+            report_id, 
+            prompt_type=prompt_type,
+            ai_provider=ai_provider,
+            model_name=model_name
+        )
 
         # If LLM failed, use fallback extraction
         if analysis_result is None:
@@ -124,6 +135,8 @@ class AnalysisService:
             thinking_tokens_used=thinking_tokens_used,
             thinking_content=thinking_content,
             operations_found=operations_found,
+            model_used=model_name,
+            prompt_type=prompt_type,
         )
 
         # Extract analysis ID from database result

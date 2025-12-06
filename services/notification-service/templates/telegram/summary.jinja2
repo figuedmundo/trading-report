@@ -13,9 +13,9 @@
 {% endif %}
 
 {% if raw_analysis %}
-*Full Analysis:*
-{{ raw_analysis }}
+*Full Analysis (Truncated):*
+{{ raw_analysis | truncate(3000) }}
 {% endif %}
 
 🔗 Generated: {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}
-📝 _{{ ai_provider|title }} Analysis_
+📝 _{{ ai_provider|title }} Analysis | {{ model_used }} | {{ prompt_type }}_

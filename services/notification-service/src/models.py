@@ -19,6 +19,7 @@ class NotificationRequest(BaseModel):
     channels: List[str]
     recipients: Dict[str, str]
     message_type: str = "summary"
+    context_data: Optional[Dict[str, Any]] = None
 
     @field_validator("channels")
     @classmethod

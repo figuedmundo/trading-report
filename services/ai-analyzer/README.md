@@ -71,9 +71,14 @@ curl http://localhost:8002/health
 
 ### POST /api/v1/analyze
 
-Analyze a trading report and extract trading signals.
+Analyze a trading report and extract signals.
 
-**Request:**
+**Request Headers (Optional):**
+- `X-AI-Provider`: Override configured AI provider (e.g., `anthropic`, `groq`, `google`)
+- `X-LLM-Model`: Override specific model (e.g., `claude-3-5-sonnet-20241022`)
+- `X-Prompt-Name`: Override prompt type/template (e.g., `default`, `conservative`)
+
+**Request Body:**
 ```json
 {
   "report_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -86,6 +91,7 @@ Analyze a trading report and extract trading signals.
 {
   "report_id": "123e4567-e89b-12d3-a456-426614174000",
   "api_provider": "anthropic",
+  "model_name": "claude-3-5-sonnet-20241022",
   "summary": "Executive summary of the report...",
   "trading_signals": [
     {
@@ -144,6 +150,14 @@ The service automatically selects the LLM provider based on environment variable
 2. **Falls back to GROQ_API_KEY** - Uses Groq if Anthropic not configured
 3. **Raises ConfigurationError** - If neither is configured
 
+### Dynamic Selection (New)
+
+You can override the default provider, model, and prompt per request using API headers:
+
+- `X-AI-Provider`: Force a specific provider (e.g., "groq" to use Groq even if Anthropic is default)
+- `X-LLM-Model`: Force a specific model (e.g., "mixtral-8x7b-32768")
+- `X-Prompt-Name`: Switch prompt strategy
+
 ## Fallback Behavior
 
 If LLM API fails for any reason:
@@ -178,15 +192,23 @@ All responses include:
 
 ## Example Usage
 
-### Using curl
+### Using curl with Dynamic Headers
 
 ```bash
+# Use Groq instead of default Anthropic
 curl -X POST http://localhost:8002/api/v1/analyze \
   -H "Content-Type: application/json" \
+  -H "X-AI-Provider: groq" \
   -d '{
     "report_id": "report-123",
     "raw_extracted_text": "BTC is showing strong buy signals. Entry at 43000, target 45000, stop loss at 40000."
   }'
+
+# Use specific model
+curl -X POST http://localhost:8002/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -H "X-LLM-Model: gemini-2.0-flash" \
+  -d '{ ... }'
 ```
 
 ### Using Python
@@ -194,8 +216,15 @@ curl -X POST http://localhost:8002/api/v1/analyze \
 ```python
 import requests
 
+headers = {
+    "Content-Type": "application/json",
+    "X-AI-Provider": "groq",
+    "X-Prompt-Name": "conservative"
+}
+
 response = requests.post(
     "http://localhost:8002/api/v1/analyze",
+    headers=headers,
     json={
         "report_id": "report-123",
         "raw_extracted_text": "BTC strong buy at 43000, target 45000..."
@@ -205,8 +234,6 @@ response = requests.post(
 analysis = response.json()
 print(f"Provider used: {analysis['api_provider']}")
 print(f"Summary: {analysis['summary']}")
-for signal in analysis['trading_signals']:
-    print(f"  {signal['action']} {signal['symbol']} (confidence: {signal['confidence_score']})")
 ```
 
 ## Troubleshooting

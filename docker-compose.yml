@@ -239,11 +239,11 @@ services:
     container_name: trading-notification
     environment:
       SERVICE_PORT: 8004
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: DEBUG
       DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
       DATABASE_POOL_MIN: 2
       DATABASE_POOL_MAX: 10
-      SMTP_HOST: ${SMTP_HOST}
+      SMTP_HOST: gmail-api
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
@@ -288,6 +288,7 @@ services:
       SMTP_USER: ${GMAIL_ADDRESS}
       EMAIL_PASSWORD: ${GMAIL_APP_PASSWORD}
       WEBHOOK_URL: ${GMAIL_WEBHOOK_URL:-http://n8n:5678/webhook/trading-reports}
+      WEBHOOK_SECRET_KEY: ${WEBHOOK_SECRET_KEY}
       POLL_INTERVAL: ${GMAIL_POLL_INTERVAL:-60}
       EMAIL_SEARCH_CRITERIA: ${EMAIL_SEARCH_CRITERIA:-UNSEEN}
       EMAIL_SENDER_FILTER: ${EMAIL_SENDER_FILTER:-}
@@ -300,6 +301,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - ./services/gmail-bridge/src:/app/src:cached
     deploy:
       resources:
         limits:
