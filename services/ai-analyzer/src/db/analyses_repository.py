@@ -4,7 +4,6 @@ Repository for analyses database operations.
 Handles storing and retrieving analysis results from PostgreSQL.
 """
 
-import json
 import uuid
 import hashlib
 from typing import Dict, Any, Optional, List
@@ -24,8 +23,6 @@ class AnalysesRepository:
     async def create_analysis(
         self,
         report_id: str,
-        summary: str,
-        trading_signals: List[Dict[str, Any]],
         ai_provider: str,
         raw_response: Optional[str] = None,
         thinking_budget_tokens: Optional[int] = None,
@@ -34,14 +31,13 @@ class AnalysesRepository:
         operations_found: bool = False,
         model_used: Optional[str] = None,
         prompt_type: Optional[str] = None,
+        title: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create and store analysis in database.
 
         Args:
             report_id: UUID of the report
-            summary: Executive summary text
-            trading_signals: List of trading signal dicts
             ai_provider: Name of AI provider used
             raw_response: Raw markdown response from LLM
             thinking_budget_tokens: Token budget allocated for thinking
@@ -50,6 +46,7 @@ class AnalysesRepository:
             operations_found: Boolean indicating if trading operations were extracted
             model_used: Specific AI model used
             prompt_type: Type of prompt template used
+            title: Title of the report
 
         Returns:
             Created analysis record as dict
@@ -62,17 +59,15 @@ class AnalysesRepository:
             extra={
                 "report_id": report_id,
                 "provider": ai_provider,
-                "signal_count": len(trading_signals),
                 "operations_found": operations_found,
                 "model_used": model_used,
                 "prompt_type": prompt_type,
+                "title": title,
             }
         )
 
         try:
             async with get_db_connection() as conn:
-                # Convert trading signals to JSON string for key_trades field
-                signals_json = json.dumps(trading_signals)
                 now = datetime.utcnow()
 
                 # Generate UUID from report_id URL using SHA-256 hash (deterministic and consistent)
@@ -99,13 +94,13 @@ class AnalysesRepository:
                 # Insert analysis linked to report
                 query = """
                     INSERT INTO analyses (
-                        report_id, summary, key_trades, ai_provider, raw_analysis_response, 
+                        report_id, ai_provider, raw_analysis_response, 
                         model_used, prompt_type, created_at,
-                        thinking_budget_tokens, thinking_tokens_used, thinking_content, operations_found
+                        thinking_budget_tokens, thinking_tokens_used, thinking_content, operations_found, title
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    RETURNING id, report_id, summary, key_trades, ai_provider, raw_analysis_response, 
-                              model_used, prompt_type, created_at
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    RETURNING id, report_id, ai_provider, raw_analysis_response, 
+                              model_used, prompt_type, created_at, title
                 """
 
                 config = Config()
@@ -116,8 +111,6 @@ class AnalysesRepository:
                 row = await conn.fetchrow(
                     query,
                     report_uuid,
-                    summary,
-                    signals_json,
                     ai_provider,
                     raw_response or "",
                     effective_model,
@@ -127,6 +120,7 @@ class AnalysesRepository:
                     thinking_tokens_used,
                     thinking_content,
                     operations_found,
+                    title,
                 )
 
                 if not row:
@@ -139,13 +133,12 @@ class AnalysesRepository:
                 result = {
                     "id": str(row["id"]),
                     "report_id": str(row["report_id"]),
-                    "summary": row["summary"],
-                    "key_trades": json.loads(row["key_trades"]) if row["key_trades"] else [],
                     "ai_provider": row["ai_provider"],
                     "raw_analysis_response": row["raw_analysis_response"],
                     "model_used": row["model_used"],
                     "prompt_type": row["prompt_type"],
                     "created_at": row["created_at"].isoformat(),
+                    "title": row["title"],
                 }
 
                 logger.info(
@@ -190,9 +183,9 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, key_trades, ai_provider,
+                    SELECT id, report_id, ai_provider,
                            thinking_budget_tokens, thinking_tokens_used, thinking_content,
-                           operations_found, raw_analysis_response, created_at
+                           operations_found, raw_analysis_response, created_at, title
                     FROM analyses
                     WHERE report_id = $1
                     ORDER BY created_at DESC
@@ -208,8 +201,6 @@ class AnalysesRepository:
                 result = {
                     "id": str(row["id"]),
                     "report_id": str(row["report_id"]),
-                    "summary": row["summary"],
-                    "trading_signals": json.loads(row["key_trades"]) if row["key_trades"] else [],
                     "ai_provider": row["ai_provider"],
                     "thinking_budget_tokens": row["thinking_budget_tokens"],
                     "thinking_tokens_used": row["thinking_tokens_used"],
@@ -217,6 +208,7 @@ class AnalysesRepository:
                     "operations_found": row["operations_found"],
                     "raw_analysis_response": row["raw_analysis_response"],
                     "created_at": row["created_at"].isoformat(),
+                    "title": row["title"],
                 }
 
                 logger.info(
@@ -259,7 +251,7 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                    SELECT id, report_id, ai_provider,
                            thinking_budget_tokens, thinking_tokens_used, thinking_content,
                            operations_found, created_at
                     FROM analyses
@@ -275,8 +267,6 @@ class AnalysesRepository:
                     results.append({
                         "id": str(row["id"]),
                         "report_id": str(row["report_id"]),
-                        "summary": row["summary"],
-                        "trading_signals": json.loads(row["trading_signals"]),
                         "ai_provider": row["ai_provider"],
                         "thinking_budget_tokens": row["thinking_budget_tokens"],
                         "thinking_tokens_used": row["thinking_tokens_used"],
@@ -316,7 +306,7 @@ class AnalysesRepository:
         try:
             async with get_db_connection() as conn:
                 query = """
-                    SELECT id, report_id, summary, trading_signals, ai_provider,
+                    SELECT id, report_id, ai_provider,
                            thinking_budget_tokens, thinking_tokens_used, thinking_content,
                            operations_found, created_at
                     FROM analyses
@@ -332,8 +322,6 @@ class AnalysesRepository:
                     results.append({
                         "id": str(row["id"]),
                         "report_id": str(row["report_id"]),
-                        "summary": row["summary"],
-                        "trading_signals": json.loads(row["trading_signals"]),
                         "ai_provider": row["ai_provider"],
                         "thinking_budget_tokens": row["thinking_budget_tokens"],
                         "thinking_tokens_used": row["thinking_tokens_used"],

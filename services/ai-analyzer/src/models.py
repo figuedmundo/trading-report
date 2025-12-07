@@ -5,19 +5,7 @@ Defines all input validation models and output response structures.
 """
 
 from pydantic import BaseModel, field_validator, Field
-from typing import Optional, List, Dict
-
-
-class TradingSignal(BaseModel):
-    """Trading signal with action, symbol, prices, and confidence."""
-
-    action: str  # BUY, SELL, HOLD
-    symbol: str
-    entry_price: Optional[float] = None
-    target_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    timeframe: Optional[str] = None  # short-term, medium-term, long-term
-    confidence_score: float  # 0.0 - 1.0
+from typing import Optional
 
 
 class AnalysisRequest(BaseModel):
@@ -25,6 +13,7 @@ class AnalysisRequest(BaseModel):
 
     report_id: str
     raw_extracted_text: str
+    title: Optional[str] = None
     prompt_type: Optional[str] = None  # Optional: override default prompt with 'default', 'custom', 'options', etc.
 
     @field_validator("report_id")
@@ -53,13 +42,6 @@ class AnalysisSuccessResponse(BaseModel):
 
     # Main AI response (raw markdown as returned by LLM)
     raw_analysis: str  # Complete markdown response from LLM
-
-    # Optional parsed fields (for backward compatibility / convenience)
-    summary: Optional[str] = Field(default=None, description="Extracted summary if available")
-    trading_signals: List[Dict] = Field(default_factory=list, description="Extracted trading signals if available")
-    market_insights: List[str] = Field(default_factory=list, description="Extracted market insights if available")
-    symbols_mentioned: List[str] = Field(default_factory=list, description="Extracted symbols if available")
-    price_targets: Dict[str, Optional[float]] = Field(default_factory=dict, description="Extracted price targets if available")
 
     # Extended thinking metadata (optional)
     thinking_budget_tokens: Optional[int] = Field(default=None, description="Token budget allocated for extended thinking")

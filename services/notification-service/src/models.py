@@ -5,7 +5,7 @@ Defines all input validation models and output response structures.
 """
 
 from pydantic import BaseModel, field_validator
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 

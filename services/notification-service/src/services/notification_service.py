@@ -5,7 +5,6 @@ Coordinates channel instantiation, message rendering, and delivery.
 """
 
 import asyncio
-import json
 import markdown
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
@@ -84,12 +83,10 @@ class NotificationService:
             logger.error(f"Failed to build template context: {str(e)}")
             context = {
                 "report_title": "Trading Analysis",
-                "summary": "Analysis report summary",
-                "trading_signals": [],
-                "sentiment": "neutral",
-                "confidence_score": 0.0,
                 "report_url": "",
                 "timestamp": datetime.utcnow(),
+                "raw_analysis": "Analysis unavailable",
+                "html_analysis": "<p>Analysis unavailable</p>",
             }
 
         # Override with request context_data if present
@@ -124,7 +121,7 @@ class NotificationService:
                     )
                 except Exception as e:
                     logger.error(f"Template render failed for {channel_name}: {str(e)}")
-                    message = context.get("summary", "Trading report analysis")
+                    message = context.get("raw_analysis", "Trading report analysis")
 
                 # Get channel and send
                 channel = await self.channel_factory.get_channel(channel_name)
@@ -338,24 +335,7 @@ class NotificationService:
 
             if analysis:
                 analysis_dict = dict(analysis)
-                # Extract relevant fields
-                confidence_score = analysis_dict.get("confidence_score")
                 
-                # Map key_trades (DB column) to trading_signals (Template variable)
-                raw_signals = analysis_dict.get("trading_signals") or analysis_dict.get("key_trades")
-                
-                # Safely parse JSON if string
-                if isinstance(raw_signals, str):
-                    try:
-                        trading_signals = json.loads(raw_signals)
-                    except json.JSONDecodeError:
-                        logger.warning(f"Failed to parse trading signals JSON: {raw_signals}")
-                        trading_signals = []
-                elif isinstance(raw_signals, list):
-                    trading_signals = raw_signals
-                else:
-                    trading_signals = []
-
                 # Convert raw markdown to HTML for email rendering
                 raw_markdown = analysis_dict.get("raw_analysis_response", "") or ""
                 try:
@@ -365,22 +345,13 @@ class NotificationService:
                     html_analysis = raw_markdown.replace("\n", "<br>")
                 
                 return {
-                    "report_title": analysis_dict.get("title", "Trading Analysis"),
+                    "report_title": analysis_dict.get("title") or "Trading Analysis",
                     "report_id": analysis_dict.get("report_id", ""),
-                    "summary": analysis_dict.get("summary", ""),
-                    "sentiment": analysis_dict.get("sentiment", "neutral"),
-                    "confidence_score": float(confidence_score) if confidence_score is not None else 0.0,
-                    "trading_signals": trading_signals,
-                    "market_insights": analysis_dict.get("market_insights", []),
-                    "symbols_mentioned": analysis_dict.get("symbols_mentioned", []),
-                    "price_targets": analysis_dict.get("price_targets", {}),
                     "report_url": "",
                     "timestamp": datetime.utcnow(),
                     "ai_provider": analysis_dict.get("ai_provider", ""),
                     "model_used": analysis_dict.get("model_used", "unknown"),
                     "prompt_type": analysis_dict.get("prompt_type", "default"),
-                    "win_rate": analysis_dict.get("win_rate"),
-                    "profit_loss": analysis_dict.get("profit_loss"),
                     "raw_analysis": raw_markdown,
                     "html_analysis": html_analysis,
                 }
@@ -391,18 +362,11 @@ class NotificationService:
         return {
             "report_title": "Trading Analysis",
             "report_id": analysis_id,
-            "summary": "Analysis report summary",
-            "trading_signals": [],
-            "market_insights": [],
-            "symbols_mentioned": [],
-            "price_targets": {},
-            "sentiment": "neutral",
-            "confidence_score": 0.0,
             "report_url": "",
             "timestamp": datetime.utcnow(),
             "ai_provider": "",
             "model_used": "unknown",
             "prompt_type": "default",
-            "win_rate": None,
-            "profit_loss": None,
+            "raw_analysis": "Analysis unavailable",
+            "html_analysis": "<p>Analysis unavailable</p>",
         }

@@ -126,7 +126,8 @@ async def analyze_endpoint(
             request.raw_extracted_text,
             prompt_type=effective_prompt_type,
             ai_provider=x_ai_provider,
-            model_name=x_llm_model
+            model_name=x_llm_model,
+            title=request.title
         )
 
         logger.info(

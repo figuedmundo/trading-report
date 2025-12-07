@@ -1,20 +1,9 @@
 📊 *{{ report_title }}*
 
-*Sentiment:* {{ sentiment|title }} ({{ (confidence_score * 100)|int }}% confidence)
-{% if win_rate %}*Win Rate:* {{ win_rate|round(1) }}%
-{% endif %}
-{{ summary }}
-
-{% if trading_signals %}
-*Trading Signals:*
-{% for signal in trading_signals %}
-• *{{ signal.action }}* `{{ signal.symbol }}` {% if signal.entry_price %}@ ${{ signal.entry_price|round(2) }}{% endif %} → ${{ signal.target_price|round(2) if signal.target_price else '?' }} ({{ (signal.confidence_score * 100)|int }}%)
-{% endfor %}
-{% endif %}
-
 {% if raw_analysis %}
-*Full Analysis (Truncated):*
-{{ raw_analysis | truncate(3000) }}
+{{ raw_analysis | truncate(3500) }}
+{% else %}
+_No analysis content available._
 {% endif %}
 
 🔗 Generated: {{ timestamp|datetimeformat('%Y-%m-%d %H:%M:%S') }}

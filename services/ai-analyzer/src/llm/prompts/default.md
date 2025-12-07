@@ -1,25 +1,15 @@
 # Default Trading Analysis Prompt
 
-Analyze the following trading report and provide structured analysis with these sections:
+Analyze the following trading report and provide a comprehensive analysis.
 
-## Summary
-Executive summary (150-250 words) of key findings and recommendations.
-
-## Market Analysis
-Market observations, trends, and economic factors mentioned in the report.
-
-## Trading Operations
-If you identified specific trading operations (BUY/SELL/HOLD signals), provide as JSON array with objects containing:
-action, symbol, entry_price, target_price, stop_loss, timeframe, confidence_score.
-Only include if you found actual trading signals. If no operations found, omit this section.
-
-## Risk Assessment
-Risk factors, market risks, and mitigation strategies.
-
-## Additional Insights
-Any other relevant observations or notable patterns.
+Focus on:
+- **Executive Summary:** Key findings and recommendations.
+- **Market Analysis:** Market observations, trends, and economic factors.
+- **Trading Opportunities:** Potential setups or signals mentioned (in text format).
+- **Risk Assessment:** Key risks and mitigation strategies.
+- **Key Insights:** Notable patterns or observations.
 
 REPORT CONTENT:
 {content}
 
-Return ONLY the analysis with markdown sections, no preamble or extra formatting.
+Return the analysis in clean Markdown format. Do not include any preamble or JSON blocks.

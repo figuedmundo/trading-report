@@ -28,8 +28,7 @@ class LLMAnalyzer:
         """
         Analyze extracted text with LLM provider.
 
-        Implements 30-second timeout. On failure, logs error and returns None
-        to trigger fallback extraction.
+        Implements 30-second timeout. On failure, logs error and returns error dict.
 
         Workflow:
         1. Call LLM provider (with timeout)
@@ -50,7 +49,7 @@ class LLMAnalyzer:
             - thinking_content: Full reasoning trace (if applicable)
             - input_tokens: Input tokens used
             - output_tokens: Output tokens used
-            Or None on failure
+            - error: Error message if failed (optional)
 
         Raises:
             LLMError: On LLM API failure (will be caught and logged)
@@ -65,7 +64,7 @@ class LLMAnalyzer:
                     f"Failed to initialize dynamic provider: {str(e)}",
                     extra={"report_id": report_id, "ai_provider": ai_provider, "model_name": model_name}
                 )
-                return None
+                return {"error": f"Failed to initialize provider: {str(e)}", "api_provider": "unknown"}
 
         logger.info(
             "Starting LLM analysis",
@@ -101,47 +100,51 @@ class LLMAnalyzer:
             return analysis
 
         except asyncio.TimeoutError:
+            error_msg = f"LLM analysis timed out after {self.config.analysis_timeout} seconds"
             logger.warning(
-                "LLM analysis timed out - fallback extraction will be used",
+                error_msg,
                 extra={
                     "report_id": report_id,
                     "provider": effective_provider.get_provider_name(),
                     "timeout_seconds": self.config.analysis_timeout,
                 }
             )
-            return None
+            return {"error": error_msg, "api_provider": effective_provider.get_provider_name()}
 
         except InvalidResponseError as e:
+            error_msg = f"LLM returned invalid response: {e.message}"
             logger.warning(
-                f"LLM returned invalid response - fallback extraction will be used: {e.message}",
+                error_msg,
                 extra={
                     "report_id": report_id,
                     "provider": effective_provider.get_provider_name(),
                     "error_code": e.error_code,
                 }
             )
-            return None
+            return {"error": error_msg, "api_provider": effective_provider.get_provider_name()}
 
         except LLMError as e:
+            error_msg = f"LLM API error: {e.message}"
             logger.warning(
-                f"LLM API error - fallback extraction will be used: {e.message}",
+                error_msg,
                 extra={
                     "report_id": report_id,
                     "provider": effective_provider.get_provider_name(),
                     "error_code": e.error_code,
                 }
             )
-            return None
+            return {"error": error_msg, "api_provider": effective_provider.get_provider_name()}
 
         except Exception as e:
+            error_msg = f"Unexpected LLM error: {str(e)}"
             logger.warning(
-                f"Unexpected LLM error - fallback extraction will be used: {str(e)}",
+                error_msg,
                 extra={
                     "report_id": report_id,
                     "provider": effective_provider.get_provider_name(),
                 }
             )
-            return None
+            return {"error": error_msg, "api_provider": effective_provider.get_provider_name()}
 
     async def _call_llm(self, content: str, prompt_type: str = None, provider: LLMProvider = None) -> Dict[str, Any]:
         """
