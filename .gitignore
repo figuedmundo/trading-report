@@ -60,6 +60,7 @@ test-results/
 
 .claude
 .gemini
+agent-os/
 
 # Secrets
 token.pickle

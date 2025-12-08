@@ -46,6 +46,7 @@ services:
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-trading_reports}
       - DB_POSTGRESDB_USER=${N8N_DB_USER:-n8n_user}
       - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASSWORD}
+      - N8N_SECURE_COOKIE=false
       # Notification service credentials
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
