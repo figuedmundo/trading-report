@@ -87,10 +87,15 @@ class AnthropicProvider(LLMProvider):
             # Build thinking config if budget > 0
             thinking_config = None
             if self.thinking_budget_tokens > 0:
+                # Cap thinking budget to ensure room for response (max 4096)
+                # Anthropic requires minimum 1024 for thinking
+                adjusted_budget = max(1024, min(self.thinking_budget_tokens, 4096))
+                
                 thinking_config = {
                     "type": "enabled",
-                    "budget_tokens": self.thinking_budget_tokens
+                    "budget_tokens": adjusted_budget
                 }
+                logger.debug(f"Thinking enabled with budget: {adjusted_budget} (Configured: {self.thinking_budget_tokens})")
 
             response = self.client.messages.create(
                 model=self.model_name,
@@ -286,12 +291,15 @@ class GoogleProvider(LLMProvider):
             # Add thinking config if supported and budget > 0
             if self.thinking_budget_tokens > 0:
                 try:
+                    # Cap thinking budget to ensure room for response
+                    adjusted_budget = min(self.thinking_budget_tokens, 4096)
+                    
                     config.thinking_config = types.ThinkingConfig(
-                        budget_tokens=self.thinking_budget_tokens
+                        budget_tokens=adjusted_budget
                     )
                     logger.info(
                         "Extended thinking enabled for Gemini",
-                        extra={"model": self.model_name, "budget": self.thinking_budget_tokens}
+                        extra={"model": self.model_name, "budget": adjusted_budget}
                     )
                 except Exception:
                     # If thinking not supported, continue without it
