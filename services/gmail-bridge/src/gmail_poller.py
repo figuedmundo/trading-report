@@ -135,7 +135,8 @@ class GmailPoller:
             )
 
             # Prepare headers and body
-            payload_dict = payload.model_dump()
+            # Use mode='json' to ensure datetime objects are serialized to strings
+            payload_dict = payload.model_dump(mode='json')
             # Using json.dumps with default separators to match standard JSON serialization
             # Note: Pydantic's model_dump_json() could also be used but we need consistent bytes for signing
             json_body = json.dumps(payload_dict).encode("utf-8")
