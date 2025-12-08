@@ -6,6 +6,7 @@ import logging
 import hmac
 import hashlib
 import json
+import collections
 from email.parser import BytesParser
 from email import policy
 from typing import Optional, Dict, Any
@@ -29,6 +30,7 @@ class GmailPoller:
         self.config = Config
         self.imap_client: Optional[IMAPClient] = None
         self.processed_uids: set = set()
+        self.processed_uids_deque: collections.deque = collections.deque(maxlen=10000)
         self.is_running = False
         self.last_poll_time: Optional[datetime] = None
         self.next_poll_time: Optional[datetime] = None
@@ -71,12 +73,20 @@ class GmailPoller:
         url_pattern = r'https?://[^\s<>"\']+'
         matches = re.findall(url_pattern, body)
 
+        def clean_url(url: str) -> str:
+            # Remove trailing markdown/punctuation often caught by loose regex
+            # Removes: * ) ] } , . ;
+            return url.rstrip('*)]},.;')
+
         if matches:
+            # Clean all matches first
+            cleaned_matches = [clean_url(url) for url in matches]
+
             # Prioritize ProTradingSkills URLs if available
-            pts_urls = [url for url in matches if 'protradingskills.com' in url.lower()]
+            pts_urls = [url for url in cleaned_matches if 'protradingskills.com' in url.lower()]
             if pts_urls:
                 return pts_urls[0]
-            return matches[0]
+            return cleaned_matches[0]
 
         return None
 
@@ -245,7 +255,14 @@ class GmailPoller:
                     if success:
                         stats.successfully_processed += 1
                         self.total_emails_processed += 1
-                        self.processed_uids.add(uid)
+                        
+                        # Add to memory cache with limit
+                        if uid not in self.processed_uids:
+                            if len(self.processed_uids_deque) == self.processed_uids_deque.maxlen:
+                                removed_uid = self.processed_uids_deque[0] # Item that will be popped
+                                self.processed_uids.discard(removed_uid)
+                            self.processed_uids_deque.append(uid)
+                            self.processed_uids.add(uid)
 
                         # Mark as read if configured
                         if self.config.MARK_AS_READ:
