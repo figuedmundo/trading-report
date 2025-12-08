@@ -43,6 +43,7 @@ class ScrapeSuccessResponse(BaseModel):
     title: str
     html_content: str
     text_content: str
+    markdown_content: Optional[str] = None
     report_images: List[ImageData] = []
     screenshot_base64: str = ""
     metadata: dict

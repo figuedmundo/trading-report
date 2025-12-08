@@ -133,6 +133,7 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
                 title=content["title"],
                 html_content=content["html_content"],
                 text_content=content["text_content"],
+                markdown_content=content["markdown_content"],
                 report_images=image_data_objects,
                 screenshot_base64=screenshot,
                 metadata=_create_metadata(request_id, start_time),
