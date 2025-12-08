@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "path": "webhook/trading-reports",
+        "path": "trading-reports",
         "httpMethod": "POST",
         "responseMode": "onReceived",
         "options": {}
@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const webhookData = $node['Email Webhook Trigger'].json;\nconst emailBody = webhookData.body.body;\nconst emailFrom = webhookData.body.from;\nconst emailSubject = webhookData.body.subject;\n\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: emailFrom,\n  emailSubject: emailSubject,\n  timestamp: new Date().toISOString()\n};"
+        "jsCode": "const webhookData = $node['Email Webhook Trigger'].json;\nconst emailBody = webhookData.body.body;\nconst emailFrom = webhookData.body.from;\nconst emailSubject = webhookData.body.subject;\n\n// Improved regex to avoid capturing markdown characters like ** or trailing punctuation\nconst urlMatch = emailBody.match(/https?:\\/\\/[^\\s\\*\\)\\]\\}\\,]+/);\nconst reportUrl = urlMatch ? urlMatch[0] : null;\n\nif (!reportUrl) {\n  throw new Error('No report URL found in email');\n}\n\nreturn {\n  reportUrl: reportUrl,\n  emailFrom: emailFrom,\n  emailSubject: emailSubject,\n  timestamp: new Date().toISOString()\n};"
       },
       "name": "Extract Report URL",
       "type": "n8n-nodes-base.code",
@@ -37,7 +37,17 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract content from scraper response\nconst scraperResponse = $node['Scrape Report'].json || {};\n\n// Try to extract content from various possible locations\nlet scrapedContent = '';\n\n// First check if there's a nested json object\nif (scraperResponse.json) {\n  scrapedContent = typeof scraperResponse.json === 'string' ? \n                   scraperResponse.json : \n                   JSON.stringify(scraperResponse.json);\n}\n\n// Otherwise try data field\nif (!scrapedContent && scraperResponse.data) {\n  scrapedContent = typeof scraperResponse.data === 'string' ? \n                   scraperResponse.data : \n                   JSON.stringify(scraperResponse.data);\n}\n\n// Try other common field names\nif (!scrapedContent) {\n  scrapedContent = scraperResponse.html_content || \n                   scraperResponse.text_content || \n                   scraperResponse.content || \n                   scraperResponse.body || \n                   scraperResponse.text || \n                   scraperResponse.binary || '';\n}\n\nif (!scrapedContent) {\n  const fields = Object.keys(scraperResponse).join(', ');\n  const preview = JSON.stringify(scraperResponse).substring(0, 300);\n  throw new Error(`No content found. Available fields: ${fields}. Sample: ${preview}`);\n}\n\n// Extract title\nlet scrapedTitle = scraperResponse.title || \n                   (scraperResponse.json && scraperResponse.json.title) || \n                   (scraperResponse.data && scraperResponse.data.title) || \n                   'Trading Analysis';\n\nconst payload = {\n  report_id: $node['Extract Report URL'].json.reportUrl,\n  raw_extracted_text: scrapedContent.trim(),\n  title: scrapedTitle\n};\n\nconst headers = {\n  'Content-Type': 'application/json'\n};\n\nif ($env.AI_PROVIDER) headers['X-AI-Provider'] = $env.AI_PROVIDER;\nif ($env.LLM_MODEL) headers['X-LLM-Model'] = $env.LLM_MODEL;\nif ($env.PROMPT_TYPE) headers['X-Prompt-Name'] = $env.PROMPT_TYPE;\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://ai-analyzer:8000/api/v1/analyze',\n  headers: headers,\n  body: payload,\n  json: true\n});\n\nreturn response;"
+        "jsCode": "// Extract content from scraper response\nconst scraperResponse = $node['Scrape Report'].json || {};\n\n// Try to extract content from various possible locations\nlet scrapedContent = '';\n\n// First check if there's a nested json object\nif (scraperResponse.json) {\n  scrapedContent = typeof scraperResponse.json === 'string' ? \n                   scraperResponse.json : \n                   JSON.stringify(scraperResponse.json);\n}\n\n// Otherwise try data field\nif (!scrapedContent && scraperResponse.data) {\n  scrapedContent = typeof scraperResponse.data === 'string' ? \n                   scraperResponse.data : \n                   JSON.stringify(scraperResponse.data);\n}\n\n// Try other common field names
+if (!scrapedContent) {
+  // Prioritize markdown for best LLM understanding and token efficiency
+  scrapedContent = scraperResponse.markdown_content || 
+                   scraperResponse.text_content || 
+                   scraperResponse.html_content || 
+                   scraperResponse.content || 
+                   scraperResponse.body || 
+                   scraperResponse.text || 
+                   scraperResponse.binary || '';
+}\n\nif (!scrapedContent) {\n  const fields = Object.keys(scraperResponse).join(', ');\n  const preview = JSON.stringify(scraperResponse).substring(0, 300);\n  throw new Error(`No content found. Available fields: ${fields}. Sample: ${preview}`);\n}\n\n// Extract title\nlet scrapedTitle = scraperResponse.title || \n                   (scraperResponse.json && scraperResponse.json.title) || \n                   (scraperResponse.data && scraperResponse.data.title) || \n                   'Trading Analysis';\n\nconst payload = {\n  report_id: $node['Extract Report URL'].json.reportUrl,\n  raw_extracted_text: scrapedContent.trim(),\n  title: scrapedTitle\n};\n\nconst headers = {\n  'Content-Type': 'application/json'\n};\n\nif ($env.AI_PROVIDER) headers['X-AI-Provider'] = $env.AI_PROVIDER;\nif ($env.LLM_MODEL) headers['X-LLM-Model'] = $env.LLM_MODEL;\nif ($env.PROMPT_TYPE) headers['X-Prompt-Name'] = $env.PROMPT_TYPE;\n\nconst response = await this.helpers.httpRequest({\n  method: 'POST',\n  url: 'http://ai-analyzer:8000/api/v1/analyze',\n  headers: headers,\n  body: payload,\n  json: true\n});\n\nreturn response;"
       },
       "name": "Analyze Report",
       "type": "n8n-nodes-base.code",

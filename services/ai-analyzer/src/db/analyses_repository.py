@@ -32,6 +32,7 @@ class AnalysesRepository:
         model_used: Optional[str] = None,
         prompt_type: Optional[str] = None,
         title: Optional[str] = None,
+        extracted_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Create and store analysis in database.
@@ -47,6 +48,7 @@ class AnalysesRepository:
             model_used: Specific AI model used
             prompt_type: Type of prompt template used
             title: Title of the report
+            extracted_text: Raw text content extracted from the report
 
         Returns:
             Created analysis record as dict
@@ -79,9 +81,11 @@ class AnalysesRepository:
 
                 if not report_exists:
                     create_report_query = """
-                        INSERT INTO reports (id, report_url, email_received_at, status)
-                        VALUES ($1, $2, $3, $4)
-                        ON CONFLICT (id) DO NOTHING
+                        INSERT INTO reports (id, report_url, email_received_at, status, extracted_text)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (id) DO UPDATE 
+                        SET extracted_text = COALESCE(EXCLUDED.extracted_text, reports.extracted_text),
+                            updated_at = NOW()
                     """
                     await conn.execute(
                         create_report_query,
@@ -89,7 +93,16 @@ class AnalysesRepository:
                         report_id,
                         now,
                         'pending',
+                        extracted_text
                     )
+                elif extracted_text:
+                    # Update existing report with extracted text if provided
+                    update_report_query = """
+                        UPDATE reports 
+                        SET extracted_text = $1, updated_at = NOW()
+                        WHERE id = $2
+                    """
+                    await conn.execute(update_report_query, extracted_text, report_uuid)
 
                 # Insert analysis linked to report
                 query = """

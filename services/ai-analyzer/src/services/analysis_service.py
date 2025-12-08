@@ -123,6 +123,7 @@ class AnalysisService:
             model_used=model_name,
             prompt_type=effective_prompt_type,
             title=title,
+            extracted_text=raw_extracted_text,
         )
 
         # Extract analysis ID from database result

@@ -5,8 +5,9 @@ Extracts title, HTML content, and text content from portal pages.
 """
 
 from typing import Dict, Any, Optional
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from playwright.async_api import Page
+from markdownify import markdownify as md
 from src.config import Config
 from src.utils.logger import get_logger
 from src.utils.exceptions import ExtractionError
@@ -35,16 +36,23 @@ class ContentExtractor:
             url: Target report URL
 
         Returns:
-            Dict with title, html_content, text_content
+            Dict with title, html_content, text_content, markdown_content
         """
         try:
             # Navigate to report URL
             logger.info(f"Navigating to report URL: {url}")
-            await page.goto(
+            response = await page.goto(
                 url,
                 wait_until="networkidle",
                 timeout=self.config.page_load_timeout * 1000,
             )
+
+            # Check for HTTP errors (404, 500, etc.)
+            if response:
+                status = response.status
+                if status >= 400:
+                    logger.error(f"HTTP Error {status} for {url}")
+                    raise ExtractionError(f"HTTP Error {status}", context={"url": url, "status": status})
 
             # Extract title
             title = await self._extract_title(page)
@@ -55,17 +63,35 @@ class ContentExtractor:
             # Extract text content
             text_content = await self._extract_text_content(page)
 
+            # Convert to Markdown
+            markdown_content = ""
+            if html_content:
+                try:
+                    # Configure markdownify to strip images if desired, or keep them
+                    # We keep images since they are usually just links [Image](url) which is token-cheap
+                    markdown_content = md(html_content, heading_style="atx").strip()
+                except Exception as e:
+                    logger.warning(f"Failed to convert HTML to Markdown: {e}")
+                    markdown_content = text_content  # Fallback
+
             logger.info(
                 f"Content extracted successfully from {url}",
-                extra={"title_length": len(title), "html_length": len(html_content)},
+                extra={
+                    "title_length": len(title), 
+                    "html_length": len(html_content),
+                    "markdown_length": len(markdown_content)
+                },
             )
 
             return {
                 "title": title,
                 "html_content": html_content,
                 "text_content": text_content,
+                "markdown_content": markdown_content,
             }
 
+        except ExtractionError:
+            raise
         except Exception as e:
             logger.error(f"Content extraction failed: {e}", extra={"url": url})
             raise ExtractionError(f"Failed to extract content: {e}", context={"url": url})
@@ -127,8 +153,8 @@ class ContentExtractor:
                 locator = page.locator(selector).first
                 html = await locator.inner_html(timeout=10000)
                 if html and html.strip():
-                    # Clean script tags
-                    cleaned_html = self._clean_scripts(html)
+                    # Clean HTML (scripts, styles, images)
+                    cleaned_html = self._clean_html(html)
                     if cleaned_html and len(cleaned_html.strip()) > 100:
                         logger.info(f"Extracted HTML content using selector: {selector} ({len(cleaned_html)} chars)")
                         return cleaned_html
@@ -172,25 +198,35 @@ class ContentExtractor:
         return ""
 
     @staticmethod
-    def _clean_scripts(html: str) -> str:
+    def _clean_html(html: str) -> str:
         """
-        Remove script tags from HTML.
+        Clean HTML by removing scripts, styles, images, and other non-content tags.
 
         Args:
             html: HTML string
 
         Returns:
-            Cleaned HTML with script tags removed
+            Cleaned HTML string
         """
         try:
             soup = BeautifulSoup(html, "html.parser")
 
-            # Remove all script tags
-            for script in soup.find_all("script"):
-                script.decompose()
+            # Tags to remove completely
+            tags_to_remove = [
+                "script", "style", "img", "svg", "video", "audio", 
+                "iframe", "noscript", "meta", "link", "head"
+            ]
+
+            for tag_name in tags_to_remove:
+                for tag in soup.find_all(tag_name):
+                    tag.decompose()
+
+            # Remove comments
+            for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+                comment.extract()
 
             return str(soup)
 
         except Exception as e:
-            logger.error(f"Error cleaning scripts from HTML: {e}")
+            logger.error(f"Error cleaning HTML: {e}")
             return html
