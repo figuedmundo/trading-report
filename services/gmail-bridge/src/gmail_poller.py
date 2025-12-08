@@ -38,8 +38,13 @@ class GmailPoller:
         self.total_errors = 0
         self.poll_task: Optional[asyncio.Task] = None
 
-    def connect_imap(self) -> IMAPClient:
-        """Connect to Gmail IMAP server."""
+    async def _run_sync(self, func, *args):
+        """Run a synchronous blocking function in a separate thread."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, func, *args)
+
+    def _connect_imap_sync(self) -> IMAPClient:
+        """Synchronous implementation of IMAP connection."""
         try:
             client = IMAPClient(
                 self.config.IMAP_HOST,
@@ -57,11 +62,15 @@ class GmailPoller:
             logger.error(f"Failed to connect to IMAP: {e}")
             raise
 
-    def disconnect_imap(self) -> None:
-        """Disconnect from IMAP server."""
+    async def connect_imap(self) -> IMAPClient:
+        """Connect to Gmail IMAP server (async wrapper)."""
+        return await self._run_sync(self._connect_imap_sync)
+
+    async def disconnect_imap(self) -> None:
+        """Disconnect from IMAP server (async wrapper)."""
         if self.imap_client:
             try:
-                self.imap_client.logout()
+                await self._run_sync(self.imap_client.logout)
                 logger.info("Disconnected from IMAP server")
             except Exception as e:
                 logger.warning(f"Error during IMAP logout: {e}")
@@ -209,7 +218,11 @@ class GmailPoller:
 
         try:
             # Search for emails matching criteria
-            messages = self.imap_client.search(self.config.EMAIL_SEARCH_CRITERIA)
+            # Run in executor to avoid blocking
+            messages = await self._run_sync(
+                self.imap_client.search, 
+                self.config.EMAIL_SEARCH_CRITERIA
+            )
             stats.messages_found = len(messages)
 
             if not messages:
@@ -229,7 +242,12 @@ class GmailPoller:
             for uid in new_messages:
                 try:
                     # Fetch email
-                    raw_message = self.imap_client.fetch([uid], ["RFC822"])
+                    # Run in executor to avoid blocking
+                    raw_message = await self._run_sync(
+                        self.imap_client.fetch, 
+                        [uid], 
+                        ["RFC822"]
+                    )
                     raw_email = raw_message[uid][b"RFC822"]
 
                     # Parse email
@@ -267,7 +285,11 @@ class GmailPoller:
                         # Mark as read if configured
                         if self.config.MARK_AS_READ:
                             try:
-                                self.imap_client.add_flags([uid], ["\\Seen"])
+                                await self._run_sync(
+                                    self.imap_client.add_flags,
+                                    [uid],
+                                    ["\\Seen"]
+                                )
                                 logger.debug(f"Marked email UID {uid} as read")
                             except Exception as e:
                                 logger.warning(f"Failed to mark email as read: {e}")
@@ -310,7 +332,7 @@ class GmailPoller:
                 # Connect if not already connected
                 if not self.imap_client:
                     try:
-                        self.imap_client = self.connect_imap()
+                        self.imap_client = await self.connect_imap()
                         reconnect_delay = 5  # Reset on successful connection
                     except Exception as e:
                         logger.error(f"Failed to connect to IMAP, retrying in {reconnect_delay}s: {e}")
@@ -338,11 +360,11 @@ class GmailPoller:
             except Exception as e:
                 logger.error(f"Error in polling loop: {e}")
                 self.total_errors += 1
-                self.disconnect_imap()
+                await self.disconnect_imap()
                 await asyncio.sleep(10)
 
         self.is_running = False
-        self.disconnect_imap()
+        await self.disconnect_imap()
         logger.info("Gmail bridge service stopped")
 
     def stop(self) -> None:
