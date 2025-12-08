@@ -48,28 +48,33 @@ help: ## Show this help message
 # Development targets
 dev: ## Start services with visible logs (development)
 	@echo "$(GREEN)Starting services in development mode...$(NC)"
-	docker-compose up
+	docker compose up
 
 prod: ## Start services in background (production)
 	@echo "$(GREEN)Starting services in background...$(NC)"
-	docker-compose up -d
+	docker compose up -d
 	@echo "$(GREEN)Services started. Check status with: make logs$(NC)"
 
 build: ## Build/rebuild service Docker images
 	@echo "$(GREEN)Building Docker images...$(NC)"
-	docker-compose build
+	docker compose build
 
 stop: ## Stop all services
 	@echo "$(YELLOW)Stopping services...$(NC)"
-	docker-compose stop
+	docker compose stop
 
 clean: ## Stop and remove containers, volumes
 	@echo "$(RED)Removing containers and volumes...$(NC)"
-	docker-compose down -v
+	docker compose down -v
 	@echo "$(GREEN)Cleanup complete$(NC)"
 
+purge: ## Deep clean: remove containers, volumes, AND images
+	@echo "$(RED)Deep cleaning (removing containers, volumes, images, and orphans)...$(NC)"
+	docker compose down -v --rmi all --remove-orphans
+	@echo "$(GREEN)Purge complete$(NC)"
+
 logs: ## Show logs from all services
-	docker-compose logs -f
+	docker compose logs -f
 
 logs-service: ## Show logs from specific service (usage: make logs-service SERVICE=postgres)
 	@if [ -z "$(SERVICE)" ]; then \
@@ -77,7 +82,7 @@ logs-service: ## Show logs from specific service (usage: make logs-service SERVI
 		echo "Usage: make logs-service SERVICE=postgres"; \
 		exit 1; \
 	fi
-	docker-compose logs -f $(SERVICE)
+	docker compose logs -f $(SERVICE)
 
 # Database targets
 db-init: ## Initialize database and apply schema
@@ -87,7 +92,7 @@ db-init: ## Initialize database and apply schema
 		echo "Please copy .env.example to .env and configure database credentials"; \
 		exit 1; \
 	fi
-	docker-compose exec -T postgres python3 /docker-entrypoint-initdb.d/run_migrations.py
+	docker compose exec -T postgres python3 /docker-entrypoint-initdb.d/run_migrations.py
 
 db-shell: ## Open PostgreSQL shell as trading_user
 	@if [ ! -f .env ]; then \
@@ -95,23 +100,23 @@ db-shell: ## Open PostgreSQL shell as trading_user
 		exit 1; \
 	fi
 	@echo "$(GREEN)Connecting to database...$(NC)"
-	docker-compose exec postgres psql -U trading_user -d trading_reports
+	docker compose exec postgres psql -U trading_user -d trading_reports
 
 db-health: ## Check database health and connectivity
 	@echo "$(BLUE)Checking database health...$(NC)"
-	docker-compose exec -T postgres psql -U postgres -d trading_reports -c "SELECT version();"
-	docker-compose exec -T postgres psql -U postgres -d trading_reports -c \
+	docker compose exec -T postgres psql -U postgres -d trading_reports -c "SELECT version();"
+	docker compose exec -T postgres psql -U postgres -d trading_reports -c \
 		"SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name;"
 	@echo "$(GREEN)Database health check complete$(NC)"
 
 db-stats: ## Show database statistics and sizes
 	@echo "$(BLUE)Database statistics...$(NC)"
-	docker-compose exec -T postgres psql -U postgres -d trading_reports -c \
+	docker compose exec -T postgres psql -U postgres -d trading_reports -c \
 		"SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size FROM pg_tables WHERE schemaname='public' ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;"
 
 db-vacuum: ## Vacuum and analyze tables
 	@echo "$(YELLOW)Running VACUUM ANALYZE...$(NC)"
-	docker-compose exec -T postgres psql -U postgres -d trading_reports -c "VACUUM ANALYZE;"
+	docker compose exec -T postgres psql -U postgres -d trading_reports -c "VACUUM ANALYZE;"
 	@echo "$(GREEN)Vacuum complete$(NC)"
 
 db-backup: ## Backup database to file (usage: make db-backup BACKUP_FILE=backup.sql)
@@ -119,7 +124,7 @@ db-backup: ## Backup database to file (usage: make db-backup BACKUP_FILE=backup.
 		BACKUP_FILE="trading_reports_$$(date +%Y%m%d_%H%M%S).sql"; \
 	fi
 	@echo "$(GREEN)Backing up database to $(BACKUP_FILE)...$(NC)"
-	docker-compose exec -T postgres pg_dump -U postgres -d trading_reports > "$(BACKUP_FILE)"
+	docker compose exec -T postgres pg_dump -U postgres -d trading_reports > "$(BACKUP_FILE)"
 	@echo "$(GREEN)Backup complete: $(BACKUP_FILE)$(NC)"
 
 db-restore: ## Restore database from backup (usage: make db-restore BACKUP_FILE=backup.sql)
@@ -133,12 +138,12 @@ db-restore: ## Restore database from backup (usage: make db-restore BACKUP_FILE=
 		exit 1; \
 	fi
 	@echo "$(YELLOW)Restoring database from $(BACKUP_FILE)...$(NC)"
-	docker-compose exec -T postgres psql -U postgres -d trading_reports < "$(BACKUP_FILE)"
+	docker compose exec -T postgres psql -U postgres -d trading_reports < "$(BACKUP_FILE)"
 	@echo "$(GREEN)Restore complete$(NC)"
 
 db-logs-archive: ## Archive system logs older than 30 days
 	@echo "$(YELLOW)Archiving old logs...$(NC)"
-	docker-compose exec -T postgres psql -U trading_user -d trading_reports -c \
+	docker compose exec -T postgres psql -U trading_user -d trading_reports -c \
 		"INSERT INTO system_logs_archive SELECT * FROM system_logs WHERE created_at < NOW() - INTERVAL '30 days'; DELETE FROM system_logs WHERE created_at < NOW() - INTERVAL '30 days';"
 	@echo "$(GREEN)Log archival complete$(NC)"
 
@@ -176,13 +181,13 @@ typecheck: ## Type check Python code with mypy
 # Utility targets
 health: ## Check health of all services
 	@echo "$(BLUE)Checking service health...$(NC)"
-	@docker-compose ps
+	@docker compose ps
 	@echo ""
 	@echo "$(BLUE)PostgreSQL health:$(NC)"
-	@docker-compose exec -T postgres pg_isready -U postgres || echo "PostgreSQL not responding"
+	@docker compose exec -T postgres pg_isready -U postgres || echo "PostgreSQL not responding"
 	@echo ""
 	@echo "$(BLUE)N8N health:$(NC)"
-	@docker-compose exec -T n8n wget -q --spider http://localhost:5678 && echo "N8N is running" || echo "N8N not responding"
+	@docker compose exec -T n8n wget -q --spider http://localhost:5678 && echo "N8N is running" || echo "N8N not responding"
 
 shell: ## Open shell in running service (usage: make shell SERVICE=postgres)
 	@if [ -z "$(SERVICE)" ]; then \
@@ -190,7 +195,7 @@ shell: ## Open shell in running service (usage: make shell SERVICE=postgres)
 		echo "Usage: make shell SERVICE=postgres"; \
 		exit 1; \
 	fi
-	docker-compose exec $(SERVICE) bash
+	docker compose exec $(SERVICE) bash
 
 # Lifecycle targets
 .env:
