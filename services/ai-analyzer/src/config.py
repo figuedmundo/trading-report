@@ -24,6 +24,7 @@ class Config:
     llm_model: Optional[str] = os.getenv("LLM_MODEL")  # Required: model identifier
     thinking_budget_tokens: int = int(os.getenv("THINKING_BUDGET_TOKENS", "5000"))
     prompt_type: str = os.getenv("PROMPT_TYPE", "default")  # Prompt template to use
+    enable_online_search: bool = os.getenv("ENABLE_ONLINE_SEARCH", "false").lower() == "true"
 
     # AI Provider Configuration (backward compatibility)
     anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY")

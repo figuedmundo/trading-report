@@ -81,6 +81,7 @@ class AnthropicProvider(LLMProvider):
             Dict with analysis results
         """
         prompt = get_prompt(content, prompt_type=prompt_type)
+        logger.debug(f"Generated prompt for Anthropic: {prompt[:2000]}...")
 
         try:
             # Build thinking config if budget > 0
@@ -93,7 +94,7 @@ class AnthropicProvider(LLMProvider):
 
             response = self.client.messages.create(
                 model=self.model_name,
-                max_tokens=2000,
+                max_tokens=8192,
                 temperature=0,
                 thinking=thinking_config,
                 messages=[
@@ -179,22 +180,44 @@ class GroqProvider(LLMProvider):
             Dict with analysis results
         """
         prompt = get_prompt(content, prompt_type=prompt_type)
+        logger.debug(f"Generated prompt for Groq: {prompt[:2000]}...")
+
+        # Get search configuration
+        from src.config import get_config
+        config = get_config()
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=2000,
-                temperature=0,
-            )
+            # Detect if using a reasoning model (openai/gpt-oss-120b, deepseek-r1, etc.)
+            is_reasoning_model = any(k in self.model_name.lower() for k in ["openai", "deepseek", "reasoning"])
+            
+            params = {
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+
+            # Add tools if online search is enabled
+            if config.enable_online_search:
+                params["tools"] = [{"type": "browser_search"}]
+                logger.info("Online search enabled for Groq request")
+
+            if is_reasoning_model:
+                # Tuning for reasoning models
+                params["max_completion_tokens"] = 8192
+                params["temperature"] = 1
+                params["reasoning_effort"] = "high"
+                # Remove max_tokens if present in favor of max_completion_tokens
+            else:
+                # Standard models (Mixtral, Llama 3)
+                params["max_tokens"] = 8192
+                params["temperature"] = 0
+
+            response = self.client.chat.completions.create(**params)
 
             result_text = response.choices[0].message.content.strip()
 
             return {
                 "response": result_text,
-                "thinking": None,
+                "thinking": None, # Groq reasoning content usually folded into response or not returned separately yet
                 "thinking_tokens_used": None,
                 "input_tokens": getattr(response.usage, 'prompt_tokens', None),
                 "output_tokens": getattr(response.usage, 'completion_tokens', None),
@@ -249,13 +272,14 @@ class GoogleProvider(LLMProvider):
             Dict with analysis results
         """
         prompt = get_prompt(content, prompt_type=prompt_type)
+        logger.debug(f"Generated prompt for Google: {prompt[:2000]}...")
 
         try:
             from google.genai import types
 
             # Build config with thinking if budget > 0
             config = types.GenerateContentConfig(
-                max_output_tokens=2000,
+                max_output_tokens=8192,
                 temperature=0,
             )
 
@@ -343,6 +367,9 @@ def get_provider_from_model(model_name: str) -> Tuple[Type[LLMProvider], str]:
         'claude': (AnthropicProvider, 'ANTHROPIC_API_KEY'),
         'mixtral': (GroqProvider, 'GROQ_API_KEY'),
         'llama': (GroqProvider, 'GROQ_API_KEY'),
+        'gemma': (GroqProvider, 'GROQ_API_KEY'),
+        'openai': (GroqProvider, 'GROQ_API_KEY'),
+        'deepseek': (GroqProvider, 'GROQ_API_KEY'),
         'gemini': (GoogleProvider, 'GOOGLE_API_KEY'),
     }
 
@@ -350,7 +377,7 @@ def get_provider_from_model(model_name: str) -> Tuple[Type[LLMProvider], str]:
         raise ConfigurationError(
             f"Unknown model prefix: {prefix}. "
             f"Supported prefixes: {', '.join(provider_map.keys())}. "
-            f"Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, gemini-2.0-flash",
+            f"Example models: claude-3-5-sonnet-20241022, mixtral-8x7b-32768, openai/gpt-oss-120b, gemini-2.0-flash",
             context={"model_name": model_name, "prefix": prefix}
         )
 
