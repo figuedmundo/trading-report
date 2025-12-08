@@ -101,8 +101,7 @@ services:
       SECURITY_ALERT_DEBOUNCE_MINUTES: ${SECURITY_ALERT_DEBOUNCE_MINUTES:-10}
       WEBHOOK_SECURITY_ENABLED: ${WEBHOOK_SECURITY_ENABLED:-true}
       SECURITY_EVENT_RETENTION_DAYS: ${SECURITY_EVENT_RETENTION_DAYS:-90}
-    ports:
-      - "8001:8001"
+    # Ports removed for internal isolation
     networks:
       - trading-network
     depends_on:
@@ -131,8 +130,7 @@ services:
       SERVICE_PORT: 8002
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PLAYWRIGHT_HEADLESS: "true"
-    ports:
-      - "8002:8002"
+    # Ports removed for internal isolation - conflict free!
     networks:
       - trading-network
     healthcheck:
@@ -169,8 +167,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       ANALYSIS_TIMEOUT: 30
       DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
-    ports:
-      - "8000:8000"
+    # Ports removed for internal isolation
     networks:
       - trading-network
     depends_on:
@@ -208,8 +205,7 @@ services:
       AI_ANALYZER_URL: http://ai-analyzer:8000
       NOTIFICATION_SERVICE_URL: http://notification-service:8004
       N8N_URL: http://n8n:5678
-    ports:
-      - "8003:8003"
+    # Ports removed for internal isolation
     networks:
       - trading-network
     depends_on:
@@ -250,8 +246,7 @@ services:
       SENDER_EMAIL: ${EMAIL_FROM}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
-    ports:
-      - "8004:8004"
+    # Ports removed for internal isolation
     networks:
       - trading-network
     volumes:
@@ -294,8 +289,7 @@ services:
       EMAIL_SENDER_FILTER: ${EMAIL_SENDER_FILTER:-}
       MARK_AS_READ: ${MARK_AS_READ:-false}
       WEBHOOK_TIMEOUT: ${WEBHOOK_TIMEOUT:-30}
-    ports:
-      - "8005:8005"
+    # Ports removed for internal isolation
     networks:
       - trading-network
     depends_on:
