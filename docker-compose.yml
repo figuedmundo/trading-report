@@ -35,6 +35,7 @@ services:
     container_name: trading-n8n
     environment:
       - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       - N8N_PORT=${N8N_PORT:-5678}
       - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
       - NODE_ENV=${NODE_ENV:-production}
