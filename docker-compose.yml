@@ -243,7 +243,7 @@ services:
       DATABASE_URL: postgresql://trading_user:${TRADING_USER_PASSWORD}@postgres:5432/${POSTGRES_DB:-trading_reports}
       DATABASE_POOL_MIN: 2
       DATABASE_POOL_MAX: 10
-      SMTP_HOST: gmail-api
+      SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${EMAIL_PASSWORD}
