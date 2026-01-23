@@ -42,10 +42,22 @@ def main():
             print("5. Paste the code back here.")
             print("=============================\n")
 
+            # Use the newer console flow logic manually since run_console is deprecated
             flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
 
-            # This triggers the console-based auth flow
-            creds = flow.run_console()
+            # 1. Generate the authorization URL
+            # prompt='consent' forces a refresh token to be returned
+            auth_url, _ = flow.authorization_url(prompt="consent")
+
+            print(f"Please visit this URL to authorize this application: {auth_url}")
+            print("\n")
+
+            # 2. Get the authorization code from the user
+            code = input("Enter the authorization code: ")
+
+            # 3. Exchange the code for credentials
+            flow.fetch_token(code=code)
+            creds = flow.credentials
 
         # Save the credentials for the next run
         print(f"\nSaving credentials to {token_path}...")
