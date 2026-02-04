@@ -26,7 +26,9 @@ class Config:
     # Service Configuration
     service_port: int = int(os.getenv("SERVICE_PORT", "8002"))
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
-    playwright_headless: bool = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
+    playwright_headless: bool = (
+        os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
+    )
 
     # Playwright Configuration
     browser_viewport_width: int = 1920
@@ -40,16 +42,26 @@ class Config:
         "--no-default-browser-check",
         "--disable-extensions",
         "--disable-plugins",
+        "--disable-web-security",
+        "--disable-features=VizDisplayCompositor",
+        "--disable-blink-features=AutomationControlled",
+        "--disable-ipc",
+        "--exclude-switches",
+        "--disable-password-manager",
+        "--disable-default-apps",
+        "--disable-translate-new-ux",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
     ]
     user_agent: str = (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 
     # Timeouts (in seconds)
-    page_load_timeout: int = 60
-    login_timeout: int = 30
-    request_timeout: int = 120
+    page_load_timeout: int = 120
+    login_timeout: int = 60
+    request_timeout: int = 180
     image_download_timeout: int = 30
 
     # Login Configuration
