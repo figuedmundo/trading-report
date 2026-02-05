@@ -80,6 +80,7 @@ services:
 
   # Email Webhook Service - Security layer for webhook endpoint
   email-webhook:
+    image: trading-report-email-webhook:${VERSION:-latest}
     build: ./services/email-webhook
     restart: unless-stopped
     container_name: trading-email-webhook
@@ -124,6 +125,7 @@ services:
 
   # Playwright Scraper Service
   playwright-scraper:
+    image: trading-report-playwright-scraper:${VERSION:-latest}
     build: ./services/playwright-scraper
     restart: unless-stopped
     container_name: trading-playwright-scraper
@@ -155,6 +157,7 @@ services:
 
   # AI Analysis Engine Service
   ai-analyzer:
+    image: trading-report-ai-analyzer:${VERSION:-latest}
     build: ./services/ai-analyzer
     restart: unless-stopped
     container_name: trading-ai-analyzer
@@ -189,6 +192,7 @@ services:
 
   # Health Monitoring Service
   health-monitoring:
+    image: trading-report-health-monitoring:${VERSION:-latest}
     build: ./services/health-monitoring
     restart: unless-stopped
     container_name: trading-health-monitoring
@@ -234,6 +238,7 @@ services:
 
   # Unified Notification Service
   notification-service:
+    image: trading-report-notification-service:${VERSION:-latest}
     build: ./services/notification-service
     restart: unless-stopped
     container_name: trading-notification
@@ -276,6 +281,7 @@ services:
 
   # Gmail Bridge Service - IMAP polling for Gmail inbox
   gmail-bridge:
+    image: trading-report-gmail-bridge:${VERSION:-latest}
     build: ./services/gmail-bridge
     restart: unless-stopped
     container_name: trading-gmail-bridge

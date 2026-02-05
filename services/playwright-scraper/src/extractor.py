@@ -52,10 +52,23 @@ class ContentExtractor:
                 status = response.status
                 if status >= 400:
                     logger.error(f"HTTP Error {status} for {url}")
-                    raise ExtractionError(f"HTTP Error {status}", context={"url": url, "status": status})
+                    raise ExtractionError(
+                        f"HTTP Error {status}", context={"url": url, "status": status}
+                    )
 
             # Extract title
             title = await self._extract_title(page)
+
+            # Check for login page title
+            if title and any(
+                x in title.lower()
+                for x in ["acceder", "iniciar sesión", "login", "sign in"]
+            ):
+                logger.warning(f"Detected login page content for {url}")
+                raise ExtractionError(
+                    "Login required - redirected to login page",
+                    context={"url": url, "title": title},
+                )
 
             # Extract HTML content
             html_content = await self._extract_html_content(page)
@@ -77,9 +90,9 @@ class ContentExtractor:
             logger.info(
                 f"Content extracted successfully from {url}",
                 extra={
-                    "title_length": len(title), 
+                    "title_length": len(title),
                     "html_length": len(html_content),
-                    "markdown_length": len(markdown_content)
+                    "markdown_length": len(markdown_content),
                 },
             )
 
@@ -94,7 +107,9 @@ class ContentExtractor:
             raise
         except Exception as e:
             logger.error(f"Content extraction failed: {e}", extra={"url": url})
-            raise ExtractionError(f"Failed to extract content: {e}", context={"url": url})
+            raise ExtractionError(
+                f"Failed to extract content: {e}", context={"url": url}
+            )
 
     async def _extract_title(self, page: Page) -> str:
         """
@@ -156,7 +171,9 @@ class ContentExtractor:
                     # Clean HTML (scripts, styles, images)
                     cleaned_html = self._clean_html(html)
                     if cleaned_html and len(cleaned_html.strip()) > 100:
-                        logger.info(f"Extracted HTML content using selector: {selector} ({len(cleaned_html)} chars)")
+                        logger.info(
+                            f"Extracted HTML content using selector: {selector} ({len(cleaned_html)} chars)"
+                        )
                         return cleaned_html
             except Exception:
                 continue
@@ -189,7 +206,9 @@ class ContentExtractor:
                 locator = page.locator(selector).first
                 text = await locator.inner_text(timeout=10000)
                 if text and text.strip() and len(text.strip()) > 100:
-                    logger.info(f"Extracted text content using selector: {selector} ({len(text)} chars)")
+                    logger.info(
+                        f"Extracted text content using selector: {selector} ({len(text)} chars)"
+                    )
                     return text.strip()
             except Exception:
                 continue
@@ -213,8 +232,17 @@ class ContentExtractor:
 
             # Tags to remove completely
             tags_to_remove = [
-                "script", "style", "img", "svg", "video", "audio", 
-                "iframe", "noscript", "meta", "link", "head"
+                "script",
+                "style",
+                "img",
+                "svg",
+                "video",
+                "audio",
+                "iframe",
+                "noscript",
+                "meta",
+                "link",
+                "head",
             ]
 
             for tag_name in tags_to_remove:

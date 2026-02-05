@@ -233,6 +233,25 @@ class BrowserManager:
                     timeout=self.config.login_timeout * 1000,
                 )
 
+                # Verify login success by checking if login form is still visible
+                try:
+                    # Short timeout to check if we're still on login page
+                    is_login_visible = await self.page.is_visible(
+                        self.config.username_selector, timeout=2000
+                    )
+                    if is_login_visible:
+                        logger.warning("Login form still visible after submission")
+                        raise LoginError(
+                            "Login failed - form still visible",
+                            context={"url": self.page.url},
+                        )
+                except Exception as e:
+                    # Ignore timeout or other errors checking visibility - assume success if navigation happened
+                    if not isinstance(e, LoginError):
+                        pass
+                    else:
+                        raise
+
                 logger.info("Login successful")
                 return True
 
