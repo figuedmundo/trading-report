@@ -29,7 +29,7 @@ class BrowserManager:
         """
         self.config = config or Config()
         self.playwright = None
-        self.browser = None
+        self.browser: Optional[Browser] = None
         self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.request_id: Optional[str] = None

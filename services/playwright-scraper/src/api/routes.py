@@ -55,8 +55,12 @@ def _create_metadata(request_id: str, start_time: datetime) -> dict:
     }
 
 
-@router.post("/api/v1/scrape", response_model=Union[ScrapeSuccessResponse, ScrapeErrorResponse])
-async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse, ScrapeErrorResponse]:
+@router.post(
+    "/api/v1/scrape", response_model=Union[ScrapeSuccessResponse, ScrapeErrorResponse]
+)
+async def scrape_endpoint(
+    request: ScrapeRequest,
+) -> Union[ScrapeSuccessResponse, ScrapeErrorResponse]:
     """
     Scrape trading report from portal.
 
@@ -70,7 +74,9 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
     start_time = datetime.now(timezone.utc)
     url_str = str(request.url)
 
-    logger.info(f"Scrape request received", extra={"url": url_str, "request_id": request_id})
+    logger.info(
+        f"Scrape request received", extra={"url": url_str, "request_id": request_id}
+    )
 
     config = Config()
     browser_manager = BrowserManager(config)
@@ -78,9 +84,13 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
     try:
         # Launch browser
         async with browser_manager as manager:
+            page = manager.page
+            if not page:
+                raise NavigationError("Browser page not initialized")
+
             # Navigate to login page
             logger.info("Navigating to login page")
-            await manager.page.goto(
+            await page.goto(
                 config.login_url,
                 wait_until="networkidle",
                 timeout=config.login_timeout * 1000,
@@ -94,7 +104,9 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
                 password = request.password or config.trading_portal_password
 
                 if not username or not password:
-                    raise CredentialError("No credentials available (set TRADING_PORTAL_USERNAME and TRADING_PORTAL_PASSWORD in .env)")
+                    raise CredentialError(
+                        "No credentials available (set TRADING_PORTAL_USERNAME and TRADING_PORTAL_PASSWORD in .env)"
+                    )
 
                 await manager.login(username, password)
             else:
@@ -102,7 +114,44 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
 
             # Extract content
             extractor = ContentExtractor(config)
-            content = await extractor.extract_content(manager.page, url_str)
+            try:
+                content = await extractor.extract_content(page, url_str)
+            except ExtractionError as e:
+                # Handle session expiration or redirect to login page during extraction
+                if "Login required" in str(e):
+                    logger.warning(
+                        f"Login required during extraction for {url_str}. Attempting re-authentication."
+                    )
+
+                    username = request.username or config.trading_portal_username
+                    password = request.password or config.trading_portal_password
+
+                    if not username or not password:
+                        raise CredentialError(
+                            "Re-authentication failed: No credentials available"
+                        )
+
+                    if not await manager.needs_login():
+                        logger.info("Redirecting to login page for re-authentication")
+                        await page.goto(
+                            config.login_url,
+                            wait_until="networkidle",
+                            timeout=config.login_timeout * 1000,
+                        )
+
+                    if await manager.needs_login():
+                        await manager.login(username, password)
+                        logger.info(
+                            "Re-authentication successful. Retrying extraction."
+                        )
+                        content = await extractor.extract_content(page, url_str)
+                    else:
+                        logger.error(
+                            "Could not find login form during re-authentication attempt"
+                        )
+                        raise e
+                else:
+                    raise e
 
             # Extract images
             image_handler = ImageHandler(config)
@@ -122,7 +171,7 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
             ]
 
             # Capture screenshot
-            screenshot = await capture_screenshot(manager.page, config)
+            screenshot = await capture_screenshot(page, config)
 
             # Build success response
             logger.info(f"Scrape completed successfully for {url_str}")
@@ -140,7 +189,10 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
             )
 
     except CredentialError as e:
-        logger.error(f"Credential error: {e.message}", extra={"url": url_str, "request_id": request_id})
+        logger.error(
+            f"Credential error: {e.message}",
+            extra={"url": url_str, "request_id": request_id},
+        )
         return ScrapeErrorResponse(
             success=False,
             url=url_str,
@@ -150,7 +202,10 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
         )
 
     except LoginError as e:
-        logger.error(f"Login error: {e.message}", extra={"url": url_str, "request_id": request_id})
+        logger.error(
+            f"Login error: {e.message}",
+            extra={"url": url_str, "request_id": request_id},
+        )
         return ScrapeErrorResponse(
             success=False,
             url=url_str,
@@ -160,7 +215,10 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
         )
 
     except NavigationError as e:
-        logger.error(f"Navigation error: {e.message}", extra={"url": url_str, "request_id": request_id})
+        logger.error(
+            f"Navigation error: {e.message}",
+            extra={"url": url_str, "request_id": request_id},
+        )
         return ScrapeErrorResponse(
             success=False,
             url=url_str,
@@ -170,7 +228,10 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
         )
 
     except ExtractionError as e:
-        logger.error(f"Extraction error: {e.message}", extra={"url": url_str, "request_id": request_id})
+        logger.error(
+            f"Extraction error: {e.message}",
+            extra={"url": url_str, "request_id": request_id},
+        )
         return ScrapeErrorResponse(
             success=False,
             url=url_str,
@@ -180,7 +241,10 @@ async def scrape_endpoint(request: ScrapeRequest) -> Union[ScrapeSuccessResponse
         )
 
     except Exception as e:
-        logger.error(f"Unexpected error during scrape: {e}", extra={"url": url_str, "request_id": request_id})
+        logger.error(
+            f"Unexpected error during scrape: {e}",
+            extra={"url": url_str, "request_id": request_id},
+        )
         return ScrapeErrorResponse(
             success=False,
             url=url_str,
