@@ -114,44 +114,64 @@ async def scrape_endpoint(
 
             # Extract content
             extractor = ContentExtractor(config)
-            try:
-                content = await extractor.extract_content(page, url_str)
-            except ExtractionError as e:
-                # Handle session expiration or redirect to login page during extraction
-                if "Login required" in str(e):
-                    logger.warning(
-                        f"Login required during extraction for {url_str}. Attempting re-authentication."
-                    )
+            max_retries = 3
+            current_attempt = 0
+            content = None
 
-                    username = request.username or config.trading_portal_username
-                    password = request.password or config.trading_portal_password
+            while current_attempt < max_retries:
+                try:
+                    content = await extractor.extract_content(page, url_str)
+                    break
+                except ExtractionError as e:
+                    # Handle session expiration or redirect to login page during extraction
+                    if "Login required" in str(e):
+                        current_attempt += 1
+                        if current_attempt >= max_retries:
+                            logger.error(
+                                f"Max authentication retries ({max_retries}) exceeded for {url_str}"
+                            )
+                            raise e
 
-                    if not username or not password:
-                        raise CredentialError(
-                            "Re-authentication failed: No credentials available"
+                        logger.warning(
+                            f"Login required during extraction for {url_str}. Attempt {current_attempt}/{max_retries}. Attempting re-authentication."
                         )
 
-                    if not await manager.needs_login():
-                        logger.info("Redirecting to login page for re-authentication")
-                        await page.goto(
-                            config.login_url,
-                            wait_until="networkidle",
-                            timeout=config.login_timeout * 1000,
-                        )
+                        username = request.username or config.trading_portal_username
+                        password = request.password or config.trading_portal_password
 
-                    if await manager.needs_login():
-                        await manager.login(username, password)
-                        logger.info(
-                            "Re-authentication successful. Retrying extraction."
-                        )
-                        content = await extractor.extract_content(page, url_str)
+                        if not username or not password:
+                            raise CredentialError(
+                                "Re-authentication failed: No credentials available"
+                            )
+
+                        if not await manager.needs_login():
+                            logger.info(
+                                "Redirecting to login page for re-authentication"
+                            )
+                            await page.goto(
+                                config.login_url,
+                                wait_until="networkidle",
+                                timeout=config.login_timeout * 1000,
+                            )
+
+                        if await manager.needs_login():
+                            await manager.login(username, password)
+                            logger.info(
+                                "Re-authentication successful. Retrying extraction."
+                            )
+                        else:
+                            logger.error(
+                                "Could not find login form during re-authentication attempt"
+                            )
+                            raise e
                     else:
-                        logger.error(
-                            "Could not find login form during re-authentication attempt"
-                        )
                         raise e
-                else:
-                    raise e
+
+            if not content:
+                raise ExtractionError(
+                    f"Failed to extract content after {max_retries} attempts",
+                    context={"url": url_str},
+                )
 
             # Extract images
             image_handler = ImageHandler(config)
